@@ -622,7 +622,8 @@ async function leaveGame() {
 const inviteURL = () => location.origin + location.pathname + "#" + N.code;
 const inviteText = () => `Rejoins ma partie d'Undercover ! Ouvre ce lien : ${inviteURL()} (code ${N.code})`;
 async function invite() {
-  if (navigator.share) { try { await navigator.share({ title: "Undercover", text: inviteText(), url: inviteURL() }); return; } catch (e) { if (e?.name === "AbortError") return; } }
+  // Le menu de partage ajoute déjà le lien (url) au message : le texte ne doit pas le contenir une deuxième fois.
+  if (navigator.share) { try { await navigator.share({ title: "Undercover", text: `Rejoins ma partie d'Undercover ! (code ${N.code})`, url: inviteURL() }); return; } catch (e) { if (e?.name === "AbortError") return; } }
   try { await navigator.clipboard.writeText(inviteText()); N.copied = true; setTimeout(() => { N.copied = false; render(); }, 2500); }
   catch (e) { N.showInviteText = true; }
   render();
