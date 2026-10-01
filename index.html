@@ -92,6 +92,7 @@ input[type="text"] { font: inherit; padding: 11px 12px; border-radius: 10px; bor
 .leavebtn { margin-top: 28px; width: 100%; background: transparent; border-style: dashed; color: var(--muted); font-weight: 500; }
 .leavebox { margin-top: 28px; padding: 16px; border-radius: 12px; border: 1px solid var(--under); display: flex; flex-direction: column; gap: 12px; }
 .wordbtn { padding: 12px 16px; }
+.def { margin: 0; text-align: center; font-size: 14px; color: var(--muted); font-style: italic; max-width: 40ch; align-self: center; }
 .err { color: var(--under); font-weight: 700; }
 .sep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
 .sep::before, .sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -121,6 +122,7 @@ input[type="text"] { font: inherit; padding: 11px 12px; border-radius: 10px; bor
 </style>
 <script src="firebase-db.js"></script>
 <script src="pairs.js"></script>
+<script src="definitions.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -183,6 +185,8 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">
 const pName = id => CUR?.players?.find(p => p.id === id)?.name ?? CUR?.lobby?.find(p => p.id === id)?.name ?? "?";
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const norm = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const defOf = w => (typeof DEFINITIONS !== "undefined" && DEFINITIONS[w]) || "";
+const defHTML = w => defOf(w) ? `<p class="def">${esc(defOf(w))}</p>` : "";
 const wordOf = (R, id) => R.roles[id] === "white" ? null : (R.roles[id] === "under" ? R.underWord : R.civilWord);
 
 /* ---------- moteur de jeu (commun aux deux modes, agit sur une partie G) ---------- */
@@ -383,7 +387,7 @@ const LOCAL = {
     const word = wordOf(R, id);
     return `
       <span class="tag">${esc(pName(id))}, ton mot secret</span>
-      ${word ? `<div class="word">${esc(word)}</div><p class="muted center">Retiens-le bien. Tu ne sais pas si tu es Civil ou Undercover.</p>`
+      ${word ? `<div class="word">${esc(word)}</div>${defHTML(word)}<p class="muted center">Retiens-le bien. Tu ne sais pas si tu es Civil ou Undercover.</p>`
              : `<div class="word r-white">Mr. White</div><p class="muted center">Tu n'as pas de mot. Écoute les autres et bluffe.</p>`}
       <button class="primary" data-act="hide" data-autofocus>C'est retenu, cacher</button>`;
   },
@@ -444,7 +448,7 @@ const LOCAL = {
     const word = wordOf(R, id);
     return `
       <span class="tag">${esc(pName(id))}, ton mot secret</span>
-      ${word ? `<div class="word">${esc(word)}</div>` : `<div class="word r-white">Mr. White</div><p class="muted center">Tu n'as toujours pas de mot. Continue de bluffer.</p>`}
+      ${word ? `<div class="word">${esc(word)}</div>${defHTML(word)}` : `<div class="word r-white">Mr. White</div><p class="muted center">Tu n'as toujours pas de mot. Continue de bluffer.</p>`}
       <button class="primary" data-act="peekClose" data-autofocus>C'est retenu, cacher et revenir au jeu</button>`;
   },
   end() {
@@ -667,7 +671,7 @@ function netWordBox(G) {
   if (!R || !R.roles[N.me]) return `<div class="mine"><span class="muted">Tu regardes cette manche. Tu joueras à la suivante.</span></div>`;
   const out = !R.alive.includes(N.me), word = wordOf(R, N.me);
   const body = !N.showWord ? `<span class="muted">Ton mot est caché.</span>`
-    : word ? `<div class="word">${esc(word)}</div>` : `<div class="word r-white">Mr. White</div><span class="muted center">Tu n'as pas de mot. Bluffe !</span>`;
+    : word ? `<div class="word">${esc(word)}</div>${defHTML(word)}` : `<div class="word r-white">Mr. White</div><span class="muted center">Tu n'as pas de mot. Bluffe !</span>`;
   return `<div class="mine"><div class="row" style="justify-content:space-between"><span class="tag">Mon mot${out ? " · tu es éliminé" : ""}</span><button class="wordbtn" data-act="n-word">${N.showWord ? "Cacher" : "Afficher mon mot"}</button></div>${body}</div>`;
 }
 
