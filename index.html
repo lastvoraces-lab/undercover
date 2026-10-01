@@ -693,10 +693,12 @@ function netView(G) {
       </div>
       <div><span class="tag">Joueurs ${n}/${MAX_PLAYERS}</span></div>
       <ul class="players">${rows}</ul>
+      ${G.host === N.me ? `
       <label class="toggle"><input type="checkbox" id="nWhite" ${G.useWhite && whiteOk ? "checked" : ""} ${whiteOk ? "" : "disabled"}>
         <span><b>Ajouter Mr. White</b><br><span class="muted">${whiteOk ? "Un joueur sans mot, qui doit bluffer." : "Disponible à partir de 4 joueurs."}</span></span></label>
-      <button class="primary" data-act="n-start" ${n >= 3 && !N.busy ? "" : "disabled"}>${n >= 3 ? "Lancer la manche" : `Encore ${3 - n} joueur${3 - n > 1 ? "s" : ""} minimum`}</button>
-      <p class="muted">N'importe quel joueur du salon peut lancer la manche.</p>`;
+      <button class="primary" data-act="n-start" ${n >= 3 && !N.busy ? "" : "disabled"}>${n >= 3 ? "Lancer la manche" : `Encore ${3 - n} joueur${3 - n > 1 ? "s" : ""} minimum`}</button>`
+      : `<p class="muted">Mr. White : ${G.useWhite && whiteOk ? "oui" : "non"}</p>
+      <p class="notice">En attente : ${esc(pName(G.host))} lancera la manche.</p>`}`;
   }
 
   if (G.screen === "speak") {
@@ -741,7 +743,8 @@ function netView(G) {
   if (G.screen === "end") {
     const champs = R.champions || [];
     return `${head}${endSummary(CUR)}
-      <button class="primary" data-act="n-start" data-autofocus ${dis}>${champs.length ? "Nouvelle partie (scores à zéro)" : "Manche suivante"}</button>`;
+      ${G.host === N.me ? `<button class="primary" data-act="n-start" data-autofocus ${dis}>${champs.length ? "Nouvelle partie (scores à zéro)" : "Manche suivante"}</button>`
+        : `<p class="notice">En attente : ${esc(pName(G.host))} lancera la suite.</p>`}`;
   }
   return head;
 }
@@ -770,7 +773,7 @@ function netAction(act_, rawId) {
     case "n-rejoin": joinGame(N.code, S.myName || "Joueur"); return;
     case "n-word": N.showWord = !N.showWord; break;
     case "n-invite": invite(); return;
-    case "n-start": act(startNext); return;
+    case "n-start": act(G => G.host === me ? startNext(G) : false); return;
     case "n-spoke": act(G => { if (G.screen !== "speak") return false; advanceSpeaker(G); }); return;
     case "n-vote": act(G => {
       const R = G.R;
@@ -830,7 +833,7 @@ document.addEventListener("submit", e => {
 
 document.addEventListener("change", e => {
   if (e.target.id === "whiteToggle") { S.useWhite = e.target.checked; save(); }
-  if (e.target.id === "nWhite") { const v = e.target.checked; act(G => { if (G.screen !== "lobby") return false; G.useWhite = v; }); }
+  if (e.target.id === "nWhite") { const v = e.target.checked; const me = N.me; act(G => { if (G.screen !== "lobby" || G.host !== me) return false; G.useWhite = v; }); }
 });
 
 function start() {
