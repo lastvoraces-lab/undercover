@@ -89,6 +89,9 @@ input[type="text"] { font: inherit; padding: 11px 12px; border-radius: 10px; bor
 .mine { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; border: 2px dashed var(--line); }
 .mine .word { border: 0; padding: 8px; }
 .hosttip { font-size: 13px; color: var(--muted); padding: 10px 12px; border-radius: 10px; background: var(--soft); }
+.leavebtn { margin-top: 28px; width: 100%; background: transparent; border-style: dashed; color: var(--muted); font-weight: 500; }
+.leavebox { margin-top: 28px; padding: 16px; border-radius: 12px; border: 1px solid var(--under); display: flex; flex-direction: column; gap: 12px; }
+.wordbtn { padding: 12px 16px; }
 .err { color: var(--under); font-weight: 700; }
 .sep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
 .sep::before, .sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -652,7 +655,11 @@ function renderNet() {
   $("scoreTable").innerHTML = scoresHTML(G);
   $("resetZone").innerHTML = G && G.lobby[N.me] ? resetHTML(N.confirmReset, G.screen !== "lobby" || G.players.some(p => p.score), "Les joueurs restent dans le salon.") : "";
   const offline = N.code && N.everConnected && !N.connected ? `<p class="notice" role="status">Connexion perdue. Le jeu se reconnecte tout seul dès que le réseau revient.</p>` : "";
-  $("screen").innerHTML = `<section class="card">${offline}${netView(G)}${N.err ? `<p class="err" role="alert">${esc(N.err)}</p>` : ""}</section>`;
+  // « Quitter » est séparé du reste, en bas, et demande une confirmation (il était trop près de « Afficher mon mot »)
+  const leave = !N.code ? "" : N.confirmLeave
+    ? `<div class="leavebox" role="alertdialog" aria-label="Confirmer"><p class="warn">Quitter la partie ${esc(N.code)} ?</p><div class="row"><button class="primary" data-act="n-leave-yes">Oui, quitter</button><button data-act="n-leave-no">Non, rester</button></div></div>`
+    : `<button class="leavebtn" data-act="n-leave">Quitter la partie</button>`;
+  $("screen").innerHTML = `<section class="card">${offline}${netView(G)}${N.err ? `<p class="err" role="alert">${esc(N.err)}</p>` : ""}</section>${leave}`;
 }
 
 function netWordBox(G) {
@@ -661,7 +668,7 @@ function netWordBox(G) {
   const out = !R.alive.includes(N.me), word = wordOf(R, N.me);
   const body = !N.showWord ? `<span class="muted">Ton mot est caché.</span>`
     : word ? `<div class="word">${esc(word)}</div>` : `<div class="word r-white">Mr. White</div><span class="muted center">Tu n'as pas de mot. Bluffe !</span>`;
-  return `<div class="mine"><div class="row" style="justify-content:space-between"><span class="tag">Mon mot${out ? " · tu es éliminé" : ""}</span><button class="x" data-act="n-word">${N.showWord ? "Cacher" : "Afficher mon mot"}</button></div>${body}</div>`;
+  return `<div class="mine"><div class="row" style="justify-content:space-between"><span class="tag">Mon mot${out ? " · tu es éliminé" : ""}</span><button class="wordbtn" data-act="n-word">${N.showWord ? "Cacher" : "Afficher mon mot"}</button></div>${body}</div>`;
 }
 
 function netView(G) {
@@ -676,7 +683,7 @@ function netView(G) {
       ${hashCode ? "" : `<button class="primary" data-act="n-create" ${dis}>Créer une partie</button><div class="sep">ou</div>`}
       <form class="row" id="joinForm"><input type="text" id="nCode" maxlength="4" placeholder="Code (ex. KTRW)" aria-label="Code de la partie" autocomplete="off" style="text-transform:uppercase" value="${esc(hashCode)}"><button type="submit" class="${hashCode ? "primary" : ""}" ${dis}>Rejoindre</button></form>`;
   }
-  const head = `<div class="codebox"><div><span class="tag">Code de la partie</span><div class="code">${esc(N.code)}</div></div><button class="ghost x" data-act="n-leave">Quitter</button></div>`;
+  const head = `<div class="codebox"><div><span class="tag">Code de la partie</span><div class="code">${esc(N.code)}</div></div></div>`;
   if (!G) return `${head}<p class="muted">Chargement de la partie…</p>`;
   const R = G.R, member = !!G.lobby[N.me];
   if (!member) return `${head}<p class="notice">Tu n'es plus dans cette partie.</p><button class="primary" data-act="n-rejoin" ${dis}>Rejoindre à nouveau</button>`;
@@ -769,7 +776,9 @@ function netAction(act_, rawId) {
       if (!name) { N.err = "Choisis un pseudo d'abord."; break; }
       S.myName = name; N.showWord = false; createGame(name); return;
     }
-    case "n-leave": leaveGame(); return;
+    case "n-leave": N.confirmLeave = true; break;
+    case "n-leave-no": N.confirmLeave = false; break;
+    case "n-leave-yes": N.confirmLeave = false; leaveGame(); return;
     case "n-rejoin": joinGame(N.code, S.myName || "Joueur"); return;
     case "n-word": N.showWord = !N.showWord; break;
     case "n-invite": invite(); return;
