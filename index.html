@@ -575,6 +575,9 @@ function watch(code) {
   N.unsub = FB.onValue(gameRef(code), snap => {
     if (!snap.exists()) { N.game = null; N.err = `La partie ${code} n'existe plus.`; stopWatching(); render(); return; }
     N.game = normGame(snap.val());
+    // nouvelle manche : chaque téléphone recache son mot, il faut appuyer sur « Afficher mon mot »
+    const roundKey = N.game.roundNo + "-" + (N.game.R?.civilWord || "");
+    if (N.roundKey !== roundKey) { N.roundKey = roundKey; N.showWord = false; }
     if (N.err && /n'existe plus/.test(N.err)) N.err = "";
     render();
   }, e => { N.err = errText(e); render(); });
@@ -767,7 +770,7 @@ function netAction(act_, rawId) {
     case "n-rejoin": joinGame(N.code, S.myName || "Joueur"); return;
     case "n-word": N.showWord = !N.showWord; break;
     case "n-invite": invite(); return;
-    case "n-start": N.showWord = true; act(startNext); return;
+    case "n-start": act(startNext); return;
     case "n-spoke": act(G => { if (G.screen !== "speak") return false; advanceSpeaker(G); }); return;
     case "n-vote": act(G => {
       const R = G.R;
