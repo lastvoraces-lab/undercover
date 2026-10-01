@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;700&display=swap">
 <style>
-/* Undercover, version autonome (GitHub Pages). Mode en ligne : téléphone à téléphone via PeerJS. */
+/* Undercover, version autonome (GitHub Pages). Mode en ligne : partie partagée via Firebase Realtime Database. */
 :root {
   --bg: #eeedf3;
   --surface: #ffffff;
@@ -88,6 +88,7 @@ input[type="text"] { font: inherit; padding: 11px 12px; border-radius: 10px; bor
 .notice { padding: 12px 14px; border-radius: 10px; background: var(--soft); border: 1px dashed var(--accent); font-weight: 700; }
 .mine { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; border: 2px dashed var(--line); }
 .mine .word { border: 0; padding: 8px; }
+.hosttip { font-size: 13px; color: var(--muted); padding: 10px 12px; border-radius: 10px; background: var(--soft); }
 .err { color: var(--under); font-weight: 700; }
 .sep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
 .sep::before, .sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -115,7 +116,7 @@ input[type="text"] { font: inherit; padding: 11px 12px; border-radius: 10px; bor
 .confirm { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 @media (prefers-reduced-motion: no-preference) { .card { animation: in .25s ease-out; } @keyframes in { from { transform: translateY(6px); opacity: .6; } to { transform: none; opacity: 1; } } }
 </style>
-<script src="peerjs.min.js"></script>
+<script src="firebase-db.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -136,7 +137,7 @@ input[type="text"] { font: inherit; padding: 11px 12px; border-radius: 10px; bor
   <details class="card rules">
     <summary>Règles et barème de points</summary>
     <ul>
-      <li>3 à 5 joueurs. Mode <b>Un seul téléphone</b> : on se passe l'appareil. Mode <b>En ligne</b> : chacun joue sur son téléphone avec le lien ou le code de la partie. Le téléphone de l'hôte doit rester allumé sur la page.</li>
+      <li>3 à 5 joueurs. Mode <b>Un seul téléphone</b> : on se passe l'appareil. Mode <b>En ligne</b> : chacun joue sur son téléphone avec le lien ou le code de la partie. La partie est gardée en ligne : on peut rejoindre même si les autres téléphones sont en veille.</li>
       <li>Les <b class="r-civil">Civils</b> reçoivent un mot. L'<b class="r-under">Undercover</b> reçoit un mot proche, sans savoir qu'il est l'intrus. <b class="r-white">Mr. White</b> (option, à partir de 4 joueurs) n'a aucun mot.</li>
       <li>Chacun décrit son mot en un mot ou une courte phrase. L'ordre de parole est tiré au hasard à chaque tour. Mr. White ne commence jamais.</li>
       <li>Un joueur qui a oublié son mot peut le revoir pendant la partie.</li>
@@ -464,198 +465,157 @@ function localAction(act, rawId) {
   }
 }
 
-/* ===================== MODE EN LIGNE (téléphone à téléphone, via PeerJS) ===================== */
-// Le téléphone de l'hôte garde la partie complète. Chaque autre téléphone ne reçoit que sa propre vue :
-// son mot, les rôles déjà révélés, et qui a voté (pas pour qui).
-const PEER_PREFIX = "undercover-fr-jeu-";
-const PEER_OPTS = window.UNDERCOVER_PEER_OPTS || {}; // serveur PeerJS public par défaut
+/* ===================== MODE EN LIGNE (Firebase Realtime Database) ===================== */
+// La partie vit dans la base Firebase, plus sur un téléphone : on peut rejoindre même si le créateur est en veille.
+// Chaque action passe par une transaction, donc deux joueurs qui appuient en même temps ne s'écrasent pas.
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyASBNaYJoKARrDXOw_j-C82-8lpPGayDr8",
+  authDomain: "games-994eb.firebaseapp.com",
+  databaseURL: "https://games-994eb-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "games-994eb",
+  storageBucket: "games-994eb.firebasestorage.app",
+  messagingSenderId: "492627530510",
+  appId: "1:492627530510:web:4b3031cbfc90cee519fd5f"
+};
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ";
 const newCode = () => Array.from({ length: 4 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("");
-const N = { peer: null, role: null, code: null, me: null, view: null, status: "", err: "", copied: false, confirmReset: false, conn: null, retryTimer: null, wake: null,
-            H: null /* hôte : { G, lobby, votes, conns } */ };
+const N = { db: null, me: null, code: null, game: null, unsub: null, connected: true, everConnected: false, busy: false, err: "", status: "",
+            copied: false, showInviteText: false, confirmReset: false, showWord: false };
 
 function myPid() {
   try { let id = localStorage.getItem("undercover-pid"); if (!id) { id = "p" + Math.random().toString(36).slice(2, 10); localStorage.setItem("undercover-pid", id); } return id; }
-  catch (e) { return N.me || (N.me = "p" + Math.random().toString(36).slice(2, 10)); }
-}
-function saveHost() { try { localStorage.setItem("undercover-host", JSON.stringify({ code: N.code, G: N.H.G, lobby: N.H.lobby.map(p => ({ id: p.id, name: p.name })), votes: N.H.votes })); } catch (e) {} }
-function loadHost() { try { return JSON.parse(localStorage.getItem("undercover-host") || "null"); } catch (e) { return null; } }
-function clearHost() { try { localStorage.removeItem("undercover-host"); } catch (e) {} }
-
-async function keepAwake() {
-  try { if (navigator.wakeLock && !N.wake) { N.wake = await navigator.wakeLock.request("screen"); N.wake.addEventListener("release", () => N.wake = null); } } catch (e) {}
-}
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && N.role) keepAwake(); });
-
-/* ----- côté hôte ----- */
-const voteKeyG = G => `${G.roundNo}-${G.R?.turnNo}`;
-
-function filterView(pid) {
-  const H = N.H, G = H.G, R = G.R;
-  const v = { code: N.code, host: G.host, me: pid, screen: G.screen, players: G.players, useWhite: G.useWhite, roundNo: G.roundNo, lastGains: G.lastGains,
-              lobby: H.lobby.map(p => ({ id: p.id, name: p.name, online: p.id === G.host || H.conns.has(p.id) })), R: null };
-  if (R) {
-    const end = G.screen === "end", roles = {};
-    R.seat.forEach(id => { if (end || !R.alive.includes(id) || (id === pid && R.roles[id] === "white")) roles[id] = R.roles[id]; });
-    const key = voteKeyG(G);
-    v.R = { order: R.order, speakIdx: R.speakIdx, turnNo: R.turnNo, alive: R.alive, seat: R.seat, notice: R.notice, elim: R.elim, guess: R.guess,
-            winner: R.winner, champions: R.champions, roles, inRound: !!R.roles[pid], myWord: R.roles[pid] ? wordOf(R, pid) : null,
-            voted: R.alive.filter(id => H.votes[id]?.key === key), myVote: H.votes[pid]?.key === key ? H.votes[pid].target : null,
-            civilWord: end ? R.civilWord : null, underWord: end ? R.underWord : null };
-  }
-  return v;
+  catch (e) { return N.me || "p" + Math.random().toString(36).slice(2, 10); }
 }
 
-function broadcast() {
-  const H = N.H;
-  saveHost();
-  H.conns.forEach((conn, pid) => { try { if (conn.open) conn.send({ t: "view", v: filterView(pid) }); } catch (e) {} });
-  N.view = filterView(N.me);
-  render();
+function initFirebase() {
+  if (N.db) return true;
+  if (typeof FB === "undefined") { N.err = "Le module Firebase n'a pas pu se charger. Recharge la page."; return false; }
+  try {
+    const app = FB.initializeApp(FIREBASE_CONFIG);
+    N.db = FB.getDatabase(app);
+    const emu = window.UNDERCOVER_FB_EMULATOR; // tests uniquement
+    if (emu) FB.connectDatabaseEmulator(N.db, emu.host, emu.port);
+    FB.onValue(FB.ref(N.db, ".info/connected"), s => { N.connected = !!s.val(); if (N.connected) N.everConnected = true; if (N.code) render(); });
+    return true;
+  } catch (e) { N.err = "Connexion à Firebase impossible."; return false; }
 }
+const gameRef = code => FB.ref(N.db, "games/" + code);
 
-function countVotesH(G) {
-  const key = voteKeyG(G), R = G.R, counts = {};
+// Firebase ne garde ni les listes vides ni les valeurs nulles, et rend parfois les listes sous forme d'objet : on remet tout d'aplomb.
+const arr = v => Array.isArray(v) ? v.filter(x => x !== null && x !== undefined) : v && typeof v === "object" ? Object.keys(v).sort((a, b) => a - b).map(k => v[k]) : [];
+function normGame(g) {
+  const G = JSON.parse(JSON.stringify(g));
+  G.lobby = G.lobby || {}; G.votes = G.votes || {}; G.lastGains = G.lastGains || {};
+  G.players = arr(G.players); G.useWhite = !!G.useWhite; G.roundNo = G.roundNo || 0;
+  if (G.R) {
+    const R = G.R;
+    R.order = arr(R.order); R.alive = arr(R.alive); R.seat = arr(R.seat); R.champions = arr(R.champions);
+    R.roles = R.roles || {}; R.speakIdx = R.speakIdx || 0; R.turnNo = R.turnNo || 0;
+    R.notice = R.notice || ""; R.elim = R.elim ?? null; R.guess = R.guess ?? null; R.winner = R.winner ?? null; R.pick = R.pick ?? null;
+  } else G.R = null;
+  return G;
+}
+const clean = G => JSON.parse(JSON.stringify(G));
+const lobbyList = G => Object.entries(G.lobby || {}).map(([id, p]) => ({ id, name: p.name, joinedAt: p.joinedAt || 0 })).sort((a, b) => a.joinedAt - b.joinedAt);
+const voteKey = G => `${G.roundNo}-${G.R?.turnNo}`;
+
+function countVotes(G) {
+  const key = voteKey(G), R = G.R, counts = {};
   let voters = 0;
-  R.alive.forEach(v => { const b = N.H.votes[v]; if (b && b.key === key && R.alive.includes(b.target)) { counts[b.target] = (counts[b.target] || 0) + 1; voters++; } });
+  R.alive.forEach(v => { const b = G.votes[v]; if (b && b.key === key && R.alive.includes(b.target)) { counts[b.target] = (counts[b.target] || 0) + 1; voters++; } });
   return { counts, voters };
 }
-function resolveVotesH(G) {
-  const { counts } = countVotesH(G);
+function resolveVotes(G) {
+  const { counts } = countVotes(G);
   const max = Math.max(0, ...Object.values(counts));
   const top = Object.keys(counts).filter(id => counts[id] === max);
+  G.votes = {};
   if (max > 0 && top.length === 1) eliminate(G, top[0]); else newSpeakingTurn(G, TIE_NOTICE);
 }
 
-function handle(pid, msg) {
-  const H = N.H, G = H.G, R = G.R, isHostP = pid === G.host;
-  if (msg.t === "hello") {
-    const known = H.lobby.find(p => p.id === pid);
-    const name = String(msg.name || "").trim().slice(0, 20) || "Joueur";
-    if (known) known.name = name;
-    else if (H.lobby.length >= MAX_PLAYERS) { try { H.conns.get(pid)?.send({ t: "full" }); } catch (e) {} H.conns.delete(pid); return; }
-    else H.lobby.push({ id: pid, name });
-    const inGame = G.players.find(p => p.id === pid); if (inGame) inGame.name = name;
-    broadcast(); return;
-  }
-  if (msg.t !== "act") return;
-  switch (msg.a) {
-    case "start":
-      if (!isHostP || !(G.screen === "lobby" || G.screen === "end") || H.lobby.length < 3) return;
-      { const old = Object.fromEntries(G.players.map(p => [p.id, p.score]));
-        G.players = H.lobby.slice(0, MAX_PLAYERS).map(p => ({ id: p.id, name: p.name, score: old[p.id] || 0 })); }
-      H.votes = {};
-      startRound(G); newSpeakingTurn(G);
-      break;
-    case "white": if (isHostP && G.screen === "lobby") G.useWhite = !!msg.v; break;
-    case "spoke": if (G.screen === "speak" && (pid === R.order[R.speakIdx] || isHostP)) advanceSpeaker(G); break;
-    case "vote":
-      if (G.screen !== "vote" || !R.alive.includes(pid) || !R.alive.includes(msg.target) || msg.target === pid) return;
-      H.votes[pid] = { key: voteKeyG(G), target: msg.target };
-      if (countVotesH(G).voters === R.alive.length) resolveVotesH(G);
-      break;
-    case "retry": if (isHostP && G.screen === "vote") newSpeakingTurn(G, TIE_NOTICE); break;
-    case "tally": if (isHostP && G.screen === "vote") resolveVotesH(G); break;
-    case "continue": if (isHostP && G.screen === "eliminated" && R.roles[R.elim] !== "white") afterElim(G); break;
-    case "guess": if (G.screen === "eliminated" && pid === R.elim && R.roles[pid] === "white" && msg.g) submitGuess(G, String(msg.g).slice(0, 40)); break;
-    case "reset": if (isHostP) { resetGame(G); H.votes = {}; } break;
-    case "leave": if (G.screen === "lobby" && !isHostP) { H.lobby = H.lobby.filter(p => p.id !== pid); G.players = G.players.filter(p => p.id !== pid); } break;
-    default: return;
-  }
-  broadcast();
+// Applique une action à la partie de façon atomique. `fn` renvoie false pour annuler.
+async function act(fn) {
+  if (!N.db || !N.code || N.busy) return false;
+  N.busy = true; N.err = ""; render();
+  let ok = false;
+  try {
+    const res = await FB.runTransaction(gameRef(N.code), cur => {
+      if (cur === null) return null; // cache local vide : Firebase relancera avec la vraie valeur
+      const G = normGame(cur);
+      if (fn(G) === false) return undefined;
+      return clean(G);
+    });
+    ok = res.committed;
+  } catch (e) { N.err = errText(e); }
+  N.busy = false; render();
+  return ok;
+}
+function errText(e) {
+  const m = String(e?.code || e?.message || e);
+  if (/permission/i.test(m)) return "Firebase refuse l'accès. Les règles de la base de données ne sont sans doute pas encore installées.";
+  return "L'action n'a pas pu être enregistrée. Vérifie ta connexion et réessaie.";
 }
 
-function openHostPeer(code, onReady, attempt = 0) {
-  const peer = new Peer(PEER_PREFIX + code, PEER_OPTS);
-  N.peer = peer;
-  peer.on("open", () => { N.status = ""; onReady(); });
-  peer.on("connection", conn => {
-    conn.on("data", msg => {
-      if (!msg || typeof msg !== "object") return;
-      if (msg.t === "hello") { conn.pid = String(msg.pid || "").slice(0, 20); if (!conn.pid) return; N.H.conns.set(conn.pid, conn); }
-      if (conn.pid) handle(conn.pid, msg);
-    });
-    conn.on("close", () => { if (conn.pid && N.H.conns.get(conn.pid) === conn) { N.H.conns.delete(conn.pid); broadcast(); } });
-  });
-  peer.on("disconnected", () => { N.status = "Connexion au service perdue, reconnexion…"; render(); setTimeout(() => { try { peer.reconnect(); } catch (e) {} }, 2000); });
-  peer.on("error", e => {
-    if (e.type === "unavailable-id") {
-      try { peer.destroy(); } catch (x) {}
-      if (attempt < 6) { N.status = "Récupération du code de la partie…"; render(); setTimeout(() => openHostPeer(code, onReady, attempt + 1), 4000); }
-      else { N.err = "Impossible de récupérer ce code. Crée une nouvelle partie."; render(); }
-      return;
+function watch(code) {
+  N.unsub?.();
+  N.code = code; N.game = null;
+  S.net = { code }; save();
+  N.unsub = FB.onValue(gameRef(code), snap => {
+    if (!snap.exists()) { N.game = null; N.err = `La partie ${code} n'existe plus.`; stopWatching(); render(); return; }
+    N.game = normGame(snap.val());
+    if (N.err && /n'existe plus/.test(N.err)) N.err = "";
+    render();
+  }, e => { N.err = errText(e); render(); });
+}
+function stopWatching() { N.unsub?.(); N.unsub = null; N.code = null; N.game = null; S.net = null; save(); }
+
+async function createGame(name) {
+  if (!initFirebase()) return render();
+  N.me = myPid(); N.busy = true; N.err = ""; render();
+  try {
+    for (let i = 0; i < 6; i++) {
+      const code = newCode();
+      const res = await FB.runTransaction(gameRef(code), cur => {
+        if (cur !== null) return undefined; // code déjà pris
+        return { code, createdAt: Date.now(), host: N.me, screen: "lobby", lobby: { [N.me]: { name, joinedAt: Date.now() } }, useWhite: false, roundNo: 0 };
+      });
+      if (res.committed) { N.busy = false; watch(code); return; }
     }
-    if (e.type === "network" || e.type === "server-error" || e.type === "socket-error" || e.type === "socket-closed") { N.status = "Problème de connexion au service. Nouvelle tentative…"; render(); return; }
-    if (e.type === "browser-incompatible") { N.err = "Ce navigateur ne permet pas le jeu en ligne. Essaie Chrome ou Safari à jour."; render(); }
-  });
+    N.err = "Impossible de trouver un code libre. Réessaie.";
+  } catch (e) { N.err = errText(e); }
+  N.busy = false; render();
 }
 
-function hostCreate(name, restore) {
-  if (typeof Peer === "undefined") { N.err = "Le module de connexion n'a pas pu se charger."; render(); return; }
-  N.role = "host"; N.me = myPid(); N.err = "";
-  N.code = restore ? restore.code : newCode();
-  N.H = restore
-    ? { G: restore.G, lobby: restore.lobby, votes: restore.votes || {}, conns: new Map() }
-    : { G: { host: N.me, screen: "lobby", players: [], useWhite: false, roundNo: 0, lastGains: {}, R: null }, lobby: [{ id: N.me, name }], votes: {}, conns: new Map() };
-  S.net = { role: "host", code: N.code }; S.myName = name || S.myName;
-  N.status = "Ouverture de la partie…"; render();
-  openHostPeer(N.code, () => { keepAwake(); broadcast(); });
+async function joinGame(code, name) {
+  if (!initFirebase()) return render();
+  N.me = myPid(); N.busy = true; N.err = ""; render();
+  let full = false, missing = false;
+  try {
+    const snap = await FB.get(gameRef(code));
+    if (!snap.exists()) missing = true;
+    else {
+      const res = await FB.runTransaction(gameRef(code), cur => {
+        if (cur === null) return null;
+        const G = normGame(cur);
+        if (!G.lobby[N.me] && Object.keys(G.lobby).length >= MAX_PLAYERS) { full = true; return undefined; }
+        full = false;
+        G.lobby[N.me] = { name, joinedAt: G.lobby[N.me]?.joinedAt || Date.now() };
+        G.players.forEach(p => { if (p.id === N.me) p.name = name; });
+        return clean(G);
+      });
+      if (res.committed) { N.busy = false; watch(code); return; }
+    }
+  } catch (e) { N.err = errText(e); N.busy = false; return render(); }
+  N.err = missing ? `Aucune partie avec le code ${code}.` : full ? "Cette partie est complète (5 joueurs)." : "Impossible de rejoindre. Réessaie.";
+  N.busy = false; render();
 }
 
-/* ----- côté invité ----- */
-function guestJoin(code, name) {
-  if (typeof Peer === "undefined") { N.err = "Le module de connexion n'a pas pu se charger."; render(); return; }
-  N.role = "guest"; N.code = code; N.me = myPid(); N.err = ""; N.view = null;
-  S.net = { role: "guest", code }; S.myName = name;
-  N.status = "Connexion à la partie…"; render();
-  if (!N.peer || N.peer.destroyed) {
-    N.peer = new Peer(PEER_OPTS);
-    N.peer.on("open", () => connectGuest());
-    N.peer.on("error", e => {
-      if (e.type === "peer-unavailable") { N.status = ""; N.err = `Partie ${code} introuvable. Vérifie le code, et que l'hôte a bien la page ouverte.`; scheduleRetry(); render(); }
-      else if (e.type === "browser-incompatible") { N.err = "Ce navigateur ne permet pas le jeu en ligne. Essaie Chrome ou Safari à jour."; render(); }
-      else { N.status = "Problème de connexion. Nouvelle tentative…"; scheduleRetry(); render(); }
-    });
-    N.peer.on("disconnected", () => { setTimeout(() => { try { N.peer.reconnect(); } catch (e) {} }, 2000); });
-  } else connectGuest();
-}
-
-function scheduleRetry() {
-  clearTimeout(N.retryTimer);
-  if (N.role !== "guest") return;
-  N.retryTimer = setTimeout(() => { if (N.role === "guest" && (!N.conn || !N.conn.open)) connectGuest(); }, 4000);
-}
-
-function connectGuest() {
-  if (N.role !== "guest" || !N.peer || N.peer.disconnected) return;
-  try { N.conn?.close(); } catch (e) {}
-  const conn = N.peer.connect(PEER_PREFIX + N.code, { reliable: true });
-  N.conn = conn;
-  conn.on("open", () => { N.status = ""; N.err = ""; conn.send({ t: "hello", pid: N.me, name: S.myName }); keepAwake(); render(); });
-  conn.on("data", msg => {
-    if (msg?.t === "view") { N.view = msg.v; N.status = ""; render(); }
-    if (msg?.t === "full") { N.err = "Cette partie est complète (5 joueurs)."; leaveNet(); }
-  });
-  conn.on("close", () => { if (N.conn === conn && N.role === "guest") { N.status = "Connexion à l'hôte perdue, reconnexion…"; render(); scheduleRetry(); } });
-  conn.on("error", () => scheduleRetry());
-}
-
-function send(a, extra = {}) {
-  const msg = { t: "act", a, ...extra };
-  if (N.role === "host") handle(N.me, msg);
-  else if (N.conn?.open) N.conn.send(msg);
-  else { N.status = "Pas connecté à l'hôte pour l'instant, réessaie dans un instant."; render(); }
-}
-
-function leaveNet() {
-  if (N.role === "guest") { try { if (N.view?.screen === "lobby") N.conn?.send({ t: "act", a: "leave" }); } catch (e) {} }
-  if (N.role === "host") clearHost();
-  clearTimeout(N.retryTimer);
-  const peer = N.peer;
-  setTimeout(() => { try { peer?.destroy(); } catch (e) {} }, 300);
-  N.peer = null; N.conn = null; N.role = null; N.view = null; N.H = null; N.code = null; N.status = "";
-  try { N.wake?.release(); } catch (e) {} N.wake = null;
-  S.net = null; render();
+async function leaveGame() {
+  const code = N.code, me = N.me;
+  if (code && N.game?.screen === "lobby") {
+    await act(G => { if (G.screen !== "lobby" || !G.lobby[me]) return false; delete G.lobby[me]; });
+  }
+  stopWatching(); N.showWord = false; render();
 }
 
 /* ----- invitation ----- */
@@ -670,41 +630,44 @@ async function invite() {
 
 /* ----- rendu en ligne ----- */
 function renderNet() {
-  const V = N.view;
-  CUR = V;
-  $("roundTag").textContent = !V ? "En ligne" : V.screen === "lobby" ? `Salon · ${V.code}` : `Manche ${V.roundNo}${V.R?.turnNo ? " · tour " + V.R.turnNo : ""}`;
-  $("scoreTable").innerHTML = scoresHTML(V);
-  const host = V && V.host === N.me;
-  $("resetZone").innerHTML = host ? resetHTML(N.confirmReset, V.screen !== "lobby" || V.players.some(p => p.score), "Les joueurs restent dans le salon.") : "";
-  $("screen").innerHTML = `<section class="card">${netView(V)}${N.status ? `<p class="notice" role="status">${esc(N.status)}</p>` : ""}${N.err ? `<p class="err" role="alert">${esc(N.err)}</p>` : ""}</section>`;
+  const G = N.code ? N.game : null;
+  CUR = G ? Object.assign({}, G, { lobby: lobbyList(G) }) : null;
+  $("roundTag").textContent = !G ? "En ligne" : G.screen === "lobby" ? `Salon · ${N.code}` : `Manche ${G.roundNo}${G.R?.turnNo ? " · tour " + G.R.turnNo : ""}`;
+  $("scoreTable").innerHTML = scoresHTML(G);
+  $("resetZone").innerHTML = G && G.lobby[N.me] ? resetHTML(N.confirmReset, G.screen !== "lobby" || G.players.some(p => p.score), "Les joueurs restent dans le salon.") : "";
+  const offline = N.code && N.everConnected && !N.connected ? `<p class="notice" role="status">Connexion perdue. Le jeu se reconnecte tout seul dès que le réseau revient.</p>` : "";
+  $("screen").innerHTML = `<section class="card">${offline}${netView(G)}${N.err ? `<p class="err" role="alert">${esc(N.err)}</p>` : ""}</section>`;
 }
 
-function netWordBox(R) {
-  if (!R.inRound) return `<div class="mine"><span class="muted">Tu regardes cette manche. Tu joueras à la suivante.</span></div>`;
-  const out = !R.alive.includes(N.me);
+function netWordBox(G) {
+  const R = G.R;
+  if (!R || !R.roles[N.me]) return `<div class="mine"><span class="muted">Tu regardes cette manche. Tu joueras à la suivante.</span></div>`;
+  const out = !R.alive.includes(N.me), word = wordOf(R, N.me);
   const body = !N.showWord ? `<span class="muted">Ton mot est caché.</span>`
-    : R.myWord ? `<div class="word">${esc(R.myWord)}</div>` : `<div class="word r-white">Mr. White</div><span class="muted center">Tu n'as pas de mot. Bluffe !</span>`;
+    : word ? `<div class="word">${esc(word)}</div>` : `<div class="word r-white">Mr. White</div><span class="muted center">Tu n'as pas de mot. Bluffe !</span>`;
   return `<div class="mine"><div class="row" style="justify-content:space-between"><span class="tag">Mon mot${out ? " · tu es éliminé" : ""}</span><button class="x" data-act="n-word">${N.showWord ? "Cacher" : "Afficher mon mot"}</button></div>${body}</div>`;
 }
 
-function netView(V) {
-  if (!N.role) {
+function netView(G) {
+  const dis = N.busy ? "disabled" : "";
+  if (!N.code) {
     const hashCode = (location.hash.slice(1).match(/^[A-Za-z]{4}$/) || [""])[0].toUpperCase();
     return `
       <div><span class="tag">En ligne</span><h2>Chacun sur son téléphone</h2></div>
-      <p class="muted">Fonctionne sur le même Wi-Fi ou à distance. Pas besoin de compte.</p>
+      <p class="muted">Pas besoin de compte. Tes amis peuvent rejoindre même si ton téléphone est en veille.</p>
       <label class="tag" for="nName">Ton pseudo</label>
       <input type="text" id="nName" maxlength="20" placeholder="Ex. Léa" autocomplete="off" value="${esc(S.myName || "")}">
-      ${hashCode ? "" : `<button class="primary" data-act="n-create">Créer une partie</button><div class="sep">ou</div>`}
-      <form class="row" id="joinForm"><input type="text" id="nCode" maxlength="4" placeholder="Code (ex. KTRW)" aria-label="Code de la partie" autocomplete="off" style="text-transform:uppercase" value="${esc(hashCode)}"><button type="submit" class="${hashCode ? "primary" : ""}">Rejoindre</button></form>`;
+      ${hashCode ? "" : `<button class="primary" data-act="n-create" ${dis}>Créer une partie</button><div class="sep">ou</div>`}
+      <form class="row" id="joinForm"><input type="text" id="nCode" maxlength="4" placeholder="Code (ex. KTRW)" aria-label="Code de la partie" autocomplete="off" style="text-transform:uppercase" value="${esc(hashCode)}"><button type="submit" class="${hashCode ? "primary" : ""}" ${dis}>Rejoindre</button></form>`;
   }
   const head = `<div class="codebox"><div><span class="tag">Code de la partie</span><div class="code">${esc(N.code)}</div></div><button class="ghost x" data-act="n-leave">Quitter</button></div>`;
-  if (!V) return head;
-  const R = V.R, host = V.host === N.me, hostName = esc(pName(V.host));
+  if (!G) return `${head}<p class="muted">Chargement de la partie…</p>`;
+  const R = G.R, member = !!G.lobby[N.me];
+  if (!member) return `${head}<p class="notice">Tu n'es plus dans cette partie.</p><button class="primary" data-act="n-rejoin" ${dis}>Rejoindre à nouveau</button>`;
 
-  if (V.screen === "lobby") {
-    const n = V.lobby.length, whiteOk = n >= 4;
-    const list = V.lobby.map((p, i) => `<li><span class="num">${i + 1}</span><span class="name">${esc(p.name)}${p.id === N.me ? " (toi)" : ""}${p.id === V.host ? ` <span class="muted">· hôte</span>` : ""}</span>${p.online ? "" : `<span class="muted">hors ligne</span>`}</li>`).join("");
+  if (G.screen === "lobby") {
+    const list = lobbyList(G), n = list.length, whiteOk = n >= 4;
+    const rows = list.map((p, i) => `<li><span class="num">${i + 1}</span><span class="name">${esc(p.name)}${p.id === N.me ? " (toi)" : ""}${p.id === G.host ? ` <span class="muted">· a créé la partie</span>` : ""}</span></li>`).join("");
     return `${head}
       <div class="mine">
         <span class="tag">Inviter des amis</span>
@@ -713,18 +676,16 @@ function netView(V) {
         ${N.showInviteText ? `<textarea id="inviteText" readonly rows="3" aria-label="Texte de l'invitation">${esc(inviteText())}</textarea><span class="muted">Copie ce texte à la main.</span>` : ""}
       </div>
       <div><span class="tag">Joueurs ${n}/${MAX_PLAYERS}</span></div>
-      <ul class="players">${list}</ul>
-      ${host ? `
-        <p class="muted">Garde cette page ouverte et l'écran allumé pendant toute la partie : c'est ton téléphone qui la fait tourner.</p>
-        <label class="toggle"><input type="checkbox" id="nWhite" ${V.useWhite && whiteOk ? "checked" : ""} ${whiteOk ? "" : "disabled"}>
-          <span><b>Ajouter Mr. White</b><br><span class="muted">${whiteOk ? "Un joueur sans mot, qui doit bluffer." : "Disponible à partir de 4 joueurs."}</span></span></label>
-        <button class="primary" data-act="n-start" ${n >= 3 ? "" : "disabled"}>${n >= 3 ? "Lancer la manche" : `Encore ${3 - n} joueur${3 - n > 1 ? "s" : ""} minimum`}</button>`
-      : `<p class="notice">En attente : ${hostName} lancera la manche.</p>`}`;
+      <ul class="players">${rows}</ul>
+      <label class="toggle"><input type="checkbox" id="nWhite" ${G.useWhite && whiteOk ? "checked" : ""} ${whiteOk ? "" : "disabled"}>
+        <span><b>Ajouter Mr. White</b><br><span class="muted">${whiteOk ? "Un joueur sans mot, qui doit bluffer." : "Disponible à partir de 4 joueurs."}</span></span></label>
+      <button class="primary" data-act="n-start" ${n >= 3 && !N.busy ? "" : "disabled"}>${n >= 3 ? "Lancer la manche" : `Encore ${3 - n} joueur${3 - n > 1 ? "s" : ""} minimum`}</button>
+      <p class="muted">N'importe quel joueur du salon peut lancer la manche.</p>`;
   }
 
-  if (V.screen === "speak") {
+  if (G.screen === "speak") {
     const cur = R.order[R.speakIdx], last = R.speakIdx === R.order.length - 1, me = cur === N.me;
-    return `${head}${netWordBox(R)}
+    return `${head}${netWordBox(G)}
       ${R.notice ? `<p class="notice">${esc(R.notice)}</p>` : ""}
       <div class="speaker" aria-live="polite">
         <span class="muted">Tour de parole ${R.turnNo} · ${R.speakIdx + 1}/${R.order.length}</span>
@@ -732,64 +693,82 @@ function netView(V) {
         <span class="muted">${me ? "Décris ton mot à voix haute, puis appuie sur le bouton." : "Écoute sa description."}</span>
       </div>
       ${orderChips(R)}
-      ${me ? `<button class="primary" data-act="n-spoke" data-autofocus>${last ? "J'ai parlé, passer au vote" : "J'ai parlé"}</button>`
-           : host ? `<button class="ghost" data-act="n-spoke">Passer : ${esc(pName(cur))} a parlé</button>` : ""}`;
+      ${me ? `<button class="primary" data-act="n-spoke" data-autofocus ${dis}>${last ? "J'ai parlé, passer au vote" : "J'ai parlé"}</button>`
+           : `<button class="ghost" data-act="n-spoke" ${dis}>Passer : ${esc(pName(cur))} a parlé</button>`}`;
   }
 
-  if (V.screen === "vote") {
-    const canVote = R.alive.includes(N.me);
-    const rows = R.order.filter(id => id !== N.me).map(id => `<li class="${R.myVote === id ? "picked" : ""}"><span class="name">${esc(pName(id))}</span>${canVote ? `<button class="choose" data-act="n-vote" data-id="${esc(id)}" aria-pressed="${R.myVote === id}">${R.myVote === id ? "Choisi" : "Choisir"}</button>` : ""}</li>`).join("");
-    const status = R.order.map(id => `<li class="${R.voted.includes(id) ? "done" : ""}">${esc(pName(id))}</li>`).join("");
-    return `${head}${netWordBox(R)}
+  if (G.screen === "vote") {
+    const key = voteKey(G), mine = G.votes[N.me]?.key === key ? G.votes[N.me].target : null;
+    const canVote = R.alive.includes(N.me), { voters } = countVotes(G);
+    const rows = R.order.filter(id => id !== N.me).map(id => `<li class="${mine === id ? "picked" : ""}"><span class="name">${esc(pName(id))}</span>${canVote ? `<button class="choose" data-act="n-vote" data-id="${esc(id)}" aria-pressed="${mine === id}" ${dis}>${mine === id ? "Choisi" : "Choisir"}</button>` : ""}</li>`).join("");
+    const status = R.order.map(id => `<li class="${G.votes[id]?.key === key ? "done" : ""}">${esc(pName(id))}</li>`).join("");
+    return `${head}${netWordBox(G)}
       <span class="tag">Vote · tour ${R.turnNo}</span>
       <h2>${canVote ? "Qui veux-tu éliminer ?" : "Les joueurs votent"}</h2>
       ${canVote ? `<p class="muted">Appuie sur « Choisir ». Tu peux changer d'avis tant que tout le monde n'a pas voté. En cas d'égalité, un nouveau tour est lancé automatiquement.</p>` : ""}
       <ul class="players">${rows}</ul>
-      <div><span class="tag">Ont voté : ${R.voted.length}/${R.alive.length}</span></div>
+      <div><span class="tag">Ont voté : ${voters}/${R.alive.length}</span></div>
       <ul class="order">${status}</ul>
-      ${host ? `<button data-act="n-retry">Égalité : relancer un tour</button>
-                <button class="ghost" data-act="n-tally" ${R.voted.length ? "" : "disabled"}>Clore le vote maintenant (${R.voted.length}/${R.alive.length})</button>` : ""}`;
+      <button data-act="n-retry" ${dis}>Égalité : relancer un tour</button>
+      <button class="ghost" data-act="n-tally" ${N.busy || !voters ? "disabled" : ""}>Clore le vote maintenant (${voters}/${R.alive.length})</button>`;
   }
 
-  if (V.screen === "eliminated") {
+  if (G.screen === "eliminated") {
     const white = R.roles[R.elim] === "white";
     let action;
     if (white && R.elim === N.me) action = `<p>Dernière chance : quel est le mot des Civils ?</p>
-      <form class="row" id="nGuessForm"><input type="text" id="nGuess" placeholder="Le mot des Civils" aria-label="Proposition de Mr. White" autocomplete="off" data-autofocus><button type="submit" class="primary">Valider</button></form>`;
+      <form class="row" id="nGuessForm"><input type="text" id="nGuess" placeholder="Le mot des Civils" aria-label="Proposition de Mr. White" autocomplete="off" data-autofocus><button type="submit" class="primary" ${dis}>Valider</button></form>`;
     else if (white) action = `<p class="notice">${esc(pName(R.elim))} cherche le mot des Civils…</p>`;
-    else action = host ? `<button class="primary" data-act="n-continue" data-autofocus>Continuer</button>` : `<p class="notice">En attente de ${hostName} pour continuer.</p>`;
+    else action = `<button class="primary" data-act="n-continue" data-autofocus ${dis}>Continuer</button>`;
     return `${head}${elimReveal(R)}${action}`;
   }
 
-  if (V.screen === "end") {
+  if (G.screen === "end") {
     const champs = R.champions || [];
-    return `${head}${endSummary(V)}
-      ${host ? `<button class="primary" data-act="n-start" data-autofocus>${champs.length ? "Nouvelle partie (scores à zéro)" : "Manche suivante"}</button>`
-             : `<p class="notice">En attente : ${hostName} lancera la suite.</p>`}`;
+    return `${head}${endSummary(CUR)}
+      <button class="primary" data-act="n-start" data-autofocus ${dis}>${champs.length ? "Nouvelle partie (scores à zéro)" : "Manche suivante"}</button>`;
   }
   return head;
 }
 
-function netAction(act, rawId) {
+/* ----- actions ----- */
+function startNext(G) {
+  if (!(G.screen === "lobby" || G.screen === "end")) return false;
+  const list = lobbyList(G);
+  if (list.length < 3) return false;
+  const old = Object.fromEntries(G.players.map(p => [p.id, p.score]));
+  G.players = list.slice(0, MAX_PLAYERS).map(p => ({ id: p.id, name: p.name, score: old[p.id] || 0 }));
+  G.votes = {};
+  startRound(G); newSpeakingTurn(G);
+}
+
+function netAction(act_, rawId) {
   N.err = "";
-  switch (act) {
+  const me = N.me;
+  switch (act_) {
     case "n-create": {
       const name = $("nName").value.trim();
       if (!name) { N.err = "Choisis un pseudo d'abord."; break; }
-      S.myName = name; hostCreate(name); N.showWord = false; return;
+      S.myName = name; N.showWord = false; createGame(name); return;
     }
-    case "n-leave": leaveNet(); return;
+    case "n-leave": leaveGame(); return;
+    case "n-rejoin": joinGame(N.code, S.myName || "Joueur"); return;
     case "n-word": N.showWord = !N.showWord; break;
     case "n-invite": invite(); return;
-    case "n-start": N.showWord = true; send("start"); return;
-    case "n-spoke": send("spoke"); return;
-    case "n-vote": send("vote", { target: rawId }); return;
-    case "n-retry": send("retry"); return;
-    case "n-tally": send("tally"); return;
-    case "n-continue": send("continue"); return;
+    case "n-start": N.showWord = true; act(startNext); return;
+    case "n-spoke": act(G => { if (G.screen !== "speak") return false; advanceSpeaker(G); }); return;
+    case "n-vote": act(G => {
+      const R = G.R;
+      if (G.screen !== "vote" || !R.alive.includes(me) || !R.alive.includes(rawId) || rawId === me) return false;
+      G.votes[me] = { key: voteKey(G), target: rawId };
+      if (countVotes(G).voters === R.alive.length) resolveVotes(G);
+    }); return;
+    case "n-retry": act(G => { if (G.screen !== "vote") return false; G.votes = {}; newSpeakingTurn(G, TIE_NOTICE); }); return;
+    case "n-tally": act(G => { if (G.screen !== "vote") return false; resolveVotes(G); }); return;
+    case "n-continue": act(G => { if (G.screen !== "eliminated" || G.R.roles[G.R.elim] === "white") return false; afterElim(G); }); return;
     case "resetAsk": N.confirmReset = true; break;
     case "resetNo": N.confirmReset = false; break;
-    case "resetYes": N.confirmReset = false; send("reset"); return;
+    case "resetYes": N.confirmReset = false; act(G => { resetGame(G); G.votes = {}; }); return;
   }
 }
 
@@ -797,10 +776,10 @@ function netAction(act, rawId) {
 document.addEventListener("click", e => {
   const b = e.target.closest("[data-act]");
   if (!b || b.disabled) return;
-  const act = b.dataset.act;
-  if (act === "mode") { S.mode = b.dataset.mode; render(); return; }
-  if (S.mode === "online") { netAction(act, b.dataset.id); render(); return; }
-  localAction(act, b.dataset.id);
+  const a = b.dataset.act;
+  if (a === "mode") { S.mode = b.dataset.mode; render(); return; }
+  if (S.mode === "online") { netAction(a, b.dataset.id); render(); return; }
+  localAction(a, b.dataset.id);
   render();
 });
 
@@ -826,18 +805,18 @@ document.addEventListener("submit", e => {
     N.err = "";
     if (!name) N.err = "Choisis un pseudo d'abord.";
     else if (!/^[A-Z]{4}$/.test(code)) N.err = "Le code fait 4 lettres.";
-    else { N.showWord = false; guestJoin(code, name); return; }
+    else { S.myName = name; N.showWord = false; joinGame(code, name); return; }
     render();
   }
   if (id === "nGuessForm") {
-    const g = $("nGuess").value.trim();
-    if (g) send("guess", { g });
+    const g = $("nGuess").value.trim(), me = N.me;
+    if (g) act(G => { const R = G.R; if (G.screen !== "eliminated" || R.elim !== me || R.roles[me] !== "white") return false; submitGuess(G, g.slice(0, 40)); });
   }
 });
 
 document.addEventListener("change", e => {
   if (e.target.id === "whiteToggle") { S.useWhite = e.target.checked; save(); }
-  if (e.target.id === "nWhite") send("white", { v: e.target.checked });
+  if (e.target.id === "nWhite") { const v = e.target.checked; act(G => { if (G.screen !== "lobby") return false; G.useWhite = v; }); }
 });
 
 function start() {
@@ -845,10 +824,10 @@ function start() {
   if (/^#[A-Za-z]{4}$/.test(location.hash)) S.mode = "online";
   if (S.mode !== "online") S.mode = "local";
   if (!["setup", "reveal", "speak", "vote", "eliminated", "end"].includes(S.screen)) S.screen = S.R ? "vote" : "setup";
-  render();
-  // retrouver une partie en cours après un rechargement de la page
-  if (S.net?.role === "host") { const saved = loadHost(); if (saved) hostCreate(S.myName, saved); else S.net = null; }
-  else if (S.net?.role === "guest" && S.net.code) guestJoin(S.net.code, S.myName);
+  N.me = myPid();
+  // retrouver la partie en cours après un rechargement (sauf si le lien mène à une autre partie)
+  const hash = location.hash.slice(1).toUpperCase();
+  if (S.net?.code && (!/^[A-Z]{4}$/.test(hash) || hash === S.net.code) && initFirebase()) watch(S.net.code);
   render();
 }
 start();

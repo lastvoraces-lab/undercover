@@ -3,20 +3,19 @@
 Jeu d'ambiance Undercover, de 3 à 5 joueurs, en français.
 
 - **Un seul téléphone** : on se passe l'appareil.
-- **En ligne** : chacun joue sur son téléphone. Le téléphone de l'hôte fait tourner la partie ; les autres s'y connectent directement (WebRTC) grâce à [PeerJS](https://peerjs.com). Le service public gratuit de PeerJS sert seulement à mettre les téléphones en relation.
+- **En ligne** : chacun joue sur son téléphone. La partie est stockée dans une base Firebase Realtime Database : on peut rejoindre même si le téléphone de celui qui a créé la partie est en veille, et n'importe quel joueur peut faire avancer la partie.
 
 ## Fichiers
 
 - `index.html` : tout le jeu (page, styles et code).
-- `peerjs.min.js` : bibliothèque PeerJS 1.5.5 (licence MIT, voir `PEERJS-LICENSE`).
+- `firebase-db.js` : SDK Firebase 12.19.0 (app + Realtime Database) regroupé en un seul fichier. Licence Apache-2.0, © Google LLC.
+- `database.rules.json` : règles d'accès à copier dans la console Firebase (Realtime Database → Rules).
 
-## Mise en ligne avec GitHub Pages
+## Mise en ligne
 
-Settings → Pages → Source : *Deploy from a branch* → branche `main`, dossier `/ (root)` → Save.
-Le jeu est ensuite disponible à l'adresse `https://<utilisateur>.github.io/<nom-du-dépôt>/`.
+GitHub Pages : Settings → Pages → Source *Deploy from a branch* → `main`, dossier `/ (root)`.
 
 ## Limites connues
 
-- Le téléphone de l'hôte doit garder la page ouverte et l'écran allumé.
-- La connexion directe entre téléphones peut échouer sur certains réseaux mobiles (pas de serveur relais TURN).
-- Le service public PeerJS est gratuit et sans garantie de disponibilité.
+- Les mots de toute la manche sont stockés dans la base : un joueur qui fouille les outils de développement de son navigateur pourrait les voir. Le jeu compte sur la confiance entre amis.
+- Toute personne qui connaît le code d'une partie peut y agir.
