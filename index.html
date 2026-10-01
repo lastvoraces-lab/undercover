@@ -722,7 +722,6 @@ function netView(G) {
       <ul class="players">${rows}</ul>
       <div><span class="tag">Ont voté : ${voters}/${R.alive.length}</span></div>
       <ul class="order">${status}</ul>
-      <button data-act="n-retry" ${dis}>Égalité : relancer un tour</button>
       <button class="ghost" data-act="n-tally" ${N.busy || !voters ? "disabled" : ""}>Clore le vote maintenant (${voters}/${R.alive.length})</button>`;
   }
 
@@ -776,7 +775,6 @@ function netAction(act_, rawId) {
       G.votes[me] = { key: voteKey(G), target: rawId };
       if (countVotes(G).voters === R.alive.length) resolveVotes(G);
     }); return;
-    case "n-retry": act(G => { if (G.screen !== "vote") return false; G.votes = {}; newSpeakingTurn(G, TIE_NOTICE); }); return;
     case "n-tally": act(G => { if (G.screen !== "vote") return false; resolveVotes(G); }); return;
     case "n-continue": act(G => { if (G.screen !== "eliminated" || G.R.roles[G.R.elim] === "white") return false; afterElim(G); }); return;
     case "resetAsk": N.confirmReset = true; break;
