@@ -31,3 +31,10 @@ Dessin commun, un trait par joueur et par tour (deux tours). Tout le monde conna
 
 - `draw/index.html` : le jeu ; `draw/words.js` : sujets à dessiner par catégorie.
 - Les parties en ligne utilisent la même base Firebase (`games/<CODE>`, avec `type: "draw"`).
+
+## Gribouillis en chaîne (`chain/`)
+
+En ligne uniquement. Chacun écrit une phrase ; elle est dessinée par le joueur suivant, le dessin est décrit par le suivant, et ainsi de suite (60 s par étape). Révélation des chaînes à la fin, pilotée par le créateur.
+
+- `chain/index.html` : le jeu ; `chain/prompts.js` : idées de phrases.
+- Firebase : `games/<CODE>/s` (état léger, suivi en direct) et `games/<CODE>/e/<chaîne>/<étape>` (textes et dessins, lus à la demande).

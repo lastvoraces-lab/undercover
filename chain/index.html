@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14131c">
+<title>Gribouillis en chaîne</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;700&display=swap">
+<style>
+/* Gribouillis en chaîne : phrase → dessin → description → dessin… en ligne uniquement. Même base visuelle que les autres jeux. */
+:root {
+  --bg: #eeedf3;
+  --surface: #ffffff;
+  --ink: #1d1b2b;
+  --muted: #6a6782;
+  --line: #d9d7e4;
+  --accent: #d9482b;
+  --accent-ink: #ffffff;
+  --civil: #1f7a6b;
+  --under: #c23a22;
+  --white: #6a6782;
+  --soft: #f6f5fa;
+  --display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14131c; --surface: #1e1c2a; --ink: #eceaf6; --muted: #9c98b5; --line: #312e44;
+    --accent: #f06a4b; --accent-ink: #1a0f0c; --civil: #4cc2ad; --under: #f07a63; --white: #b8b4d0; --soft: #252336;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14131c; --surface: #1e1c2a; --ink: #eceaf6; --muted: #9c98b5; --line: #312e44;
+  --accent: #f06a4b; --accent-ink: #1a0f0c; --civil: #4cc2ad; --under: #f07a63; --white: #b8b4d0; --soft: #252336;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; -webkit-text-size-adjust: 100%; }
+[hidden] { display: none !important; }
+textarea { font: inherit; width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--soft); color: var(--ink); resize: vertical; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 540px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 48px; display: flex; flex-direction: column; gap: 20px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--display); font-weight: 800; font-size: 26px; letter-spacing: -0.01em; margin: 0; }
+h1 span { color: var(--accent); }
+.tag { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 700; }
+h2 { font-family: var(--display); font-weight: 700; font-size: 20px; margin: 0; text-wrap: balance; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.muted { color: var(--muted); }
+p { margin: 0; }
+button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line); background: var(--soft); color: var(--ink); padding: 10px 14px; font-weight: 700; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); padding: 14px 18px; font-size: 16px; }
+.ghost { background: transparent; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.row > input { flex: 1 1 160px; min-width: 0; }
+input[type="text"] { font: inherit; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--soft); color: var(--ink); }
+.players { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.players li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--soft); }
+.players li .name { flex: 1; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
+.num { font-family: var(--display); font-size: 12px; color: var(--muted); width: 20px; }
+.x { padding: 4px 10px; font-size: 13px; }
+.toggle { display: flex; gap: 10px; align-items: flex-start; }
+.toggle input { width: 18px; height: 18px; margin-top: 3px; accent-color: var(--accent); }
+.big { font-family: var(--display); font-weight: 800; font-size: clamp(26px, 8vw, 38px); line-height: 1.15; text-wrap: balance; overflow-wrap: anywhere; }
+.word { font-family: var(--display); font-weight: 800; font-size: clamp(30px, 10vw, 46px); text-align: center; padding: 24px 12px; border: 2px dashed var(--line); border-radius: 12px; overflow-wrap: anywhere; }
+.center { text-align: center; }
+.speaker { display: flex; flex-direction: column; gap: 6px; padding: 18px; border-radius: 12px; background: var(--soft); border-left: 6px solid var(--accent); }
+.order { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.order li { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); font-weight: 700; font-size: 13px; }
+.order li.done { color: var(--muted); }
+.order li.done::before { content: "✓ "; }
+.order li.now { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.order li.out { text-decoration: line-through; color: var(--muted); opacity: 0.6; }
+.votes { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.votes button { padding: 16px 10px; overflow-wrap: anywhere; }
+.choose[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.players li.picked { outline: 2px solid var(--accent); }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+.modes button { border: 0; background: transparent; color: var(--muted); padding: 10px 8px; }
+.modes button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.codebox { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.code { font-family: var(--display); font-weight: 800; font-size: 28px; letter-spacing: 0.18em; }
+.notice { padding: 12px 14px; border-radius: 10px; background: var(--soft); border: 1px dashed var(--accent); font-weight: 700; }
+.mine { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; border: 2px dashed var(--line); }
+.mine .word { border: 0; padding: 8px; }
+.hosttip { font-size: 13px; color: var(--muted); padding: 10px 12px; border-radius: 10px; background: var(--soft); }
+.leavebtn { margin-top: 28px; width: 100%; background: transparent; border-style: dashed; color: var(--muted); font-weight: 500; }
+.leavebox { margin-top: 28px; padding: 16px; border-radius: 12px; border: 1px solid var(--under); display: flex; flex-direction: column; gap: 12px; }
+.wordbtn { padding: 12px 16px; }
+.def { margin: 0; text-align: center; font-size: 14px; color: var(--muted); font-style: italic; max-width: 40ch; align-self: center; }
+.stepper { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.stepper .x { padding: 8px 16px; font-size: 18px; }
+.stepper .count { font-family: var(--display); font-size: 20px; min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
+.backlink { align-self: flex-start; color: var(--muted); text-decoration: none; font-weight: 700; font-size: 13px; padding: 6px 0; }
+.backlink:hover, .backlink:focus-visible { color: var(--accent); }
+button, a, label, input { touch-action: manipulation; }
+.err { color: var(--under); font-weight: 700; }
+.sep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
+.sep::before, .sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.votes button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.role { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; border: 1.5px solid currentColor; }
+.r-civil { color: var(--civil); } .r-under { color: var(--under); } .r-white { color: var(--white); }
+.score { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.score td, .score th { padding: 8px 4px; border-bottom: 1px solid var(--line); text-align: left; }
+.score th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.score td.pts { text-align: right; font-family: var(--display); font-weight: 700; }
+.score .gain { color: var(--civil); font-size: 13px; font-family: var(--body); margin-left: 6px; }
+.score tr.bar td { padding: 0 4px 10px; }
+.score tr:has(+ tr.bar) td { border-bottom: 0; padding-bottom: 4px; }
+.track { height: 6px; border-radius: 999px; background: var(--soft); overflow: hidden; }
+.track div { height: 100%; background: var(--accent); border-radius: 999px; }
+.resetbtn { width: 100%; background: transparent; border-style: dashed; color: var(--muted); }
+.resetbtn:not(:disabled):hover { color: var(--accent); border-color: var(--accent); }
+.resetbox { border-color: var(--accent); }
+.champion { padding: 18px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); display: flex; flex-direction: column; gap: 4px; }
+.score tr.lead td:first-child::after { content: " ★"; color: var(--accent); }
+.rules { font-size: 14px; }
+.rules summary { cursor: pointer; font-weight: 700; }
+.rules ul { padding-left: 18px; margin: 10px 0 0; display: flex; flex-direction: column; gap: 4px; }
+.warn { color: var(--under); font-weight: 700; font-size: 14px; }
+.confirm { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+@media (prefers-reduced-motion: no-preference) { .card { animation: in .25s ease-out; } @keyframes in { from { transform: translateY(6px); opacity: .6; } to { transform: none; opacity: 1; } } }
+button, a, label, input { touch-action: manipulation; }
+.canvasbox { position: relative; width: 100%; aspect-ratio: 1; border-radius: 14px; border: 2px solid var(--line); background: #fffdf8; overflow: hidden; touch-action: none; }
+.canvasbox.live { border-color: var(--accent); }
+.canvasbox canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.swatch { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--line); padding: 0; }
+.swatch[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--accent); }
+.size { padding: 6px 10px; }
+.size[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.timer { font-family: var(--display); font-weight: 800; font-size: 22px; font-variant-numeric: tabular-nums; }
+.timer.low { color: var(--under); }
+.bubble { padding: 14px 16px; border-radius: 14px; background: var(--soft); border: 1px solid var(--line); font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+.entry { display: flex; flex-direction: column; gap: 6px; }
+.entry .by { font-size: 12px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.progress { display: flex; gap: 6px; flex-wrap: wrap; }
+.progress span { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.progress span.ok { background: var(--civil); color: var(--surface); border-color: var(--civil); }
+</style>
+<script src="../shared/firebase-db.js"></script>
+<script src="prompts.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <a class="backlink" href="../">← Tous les jeux</a>
+  <header>
+    <h1>Gribouillis <span>en chaîne</span></h1>
+    <span class="tag" id="roundTag">En ligne</span>
+  </header>
+  <main id="screen"></main>
+  <details class="card rules">
+    <summary>Règles</summary>
+    <ul>
+      <li>3 à 10 joueurs, chacun sur son téléphone. Le créateur de la partie lance et fait défiler la révélation.</li>
+      <li>Chacun écrit une phrase de départ. Elle passe au joueur suivant, qui la <b>dessine</b>.</li>
+      <li>Le dessin passe au suivant, qui écrit ce qu'il croit voir, sans connaître la phrase d'origine. Et ainsi de suite, en alternant dessin et description.</li>
+      <li>Chaque étape dure <b>60 secondes</b>. À la fin du chrono, ce qui est fait est envoyé automatiquement.</li>
+      <li>Quand chaque chaîne a fait le tour, on les révèle ensemble, étape par étape. Pas de points : le but, c'est de rire des déformations.</li>
+    </ul>
+  </details>
+</div>
+
+<script>
+const MAX_PLAYERS = 10, MIN_PLAYERS = 3, STEP_MS = window.CHAIN_STEP_MS || 60000, GRACE_MS = window.CHAIN_GRACE_MS || 8000; // durées modifiables seulement pour les tests
+const PALETTE = ["#1d1b2b", "#d9482b", "#2f5fd0", "#1f7a6b", "#e0a800", "#8a3fd1", "#7a4b2a", "#ffffff"];
+const SIZES = [6, 14, 30];
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyASBNaYJoKARrDXOw_j-C82-8lpPGayDr8",
+  authDomain: "games-994eb.firebaseapp.com",
+  databaseURL: "https://games-994eb-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "games-994eb",
+  storageBucket: "games-994eb.firebasestorage.app",
+  messagingSenderId: "492627530510",
+  appId: "1:492627530510:web:4b3031cbfc90cee519fd5f"
+};
+const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const arr = v => Array.isArray(v) ? v.filter(x => x !== null && x !== undefined) : v && typeof v === "object" ? Object.keys(v).sort((a, b) => a - b).map(k => v[k]) : [];
+
+/* Structure dans Firebase (games/<CODE>) :
+   - code, type: "chain", screen, host : fixes (exigés par les règles de la base)
+   - s : état léger, suivi en direct par tout le monde (salon, étape, chrono, qui a fini, révélation)
+   - e/<chaîne>/<étape> : les contributions (texte ou dessin), lues seulement quand on en a besoin */
+const N = { db: null, me: null, code: null, s: null, unsub: null, offset: 0, connected: true, everConnected: false, busy: false, err: "",
+            copied: false, showInviteText: false, confirmLeave: false, name: "", cache: {}, task: null, sentKey: null, forcing: false };
+const nowS = () => Date.now() + N.offset; // heure du serveur Firebase
+function myPid() {
+  try { let id = localStorage.getItem("undercover-pid"); if (!id) { id = "p" + Math.random().toString(36).slice(2, 10); localStorage.setItem("undercover-pid", id); } return id; }
+  catch (e) { return N.me || "p" + Math.random().toString(36).slice(2, 10); }
+}
+function saveLocal() { try { localStorage.setItem("chain-state", JSON.stringify({ code: N.code, name: N.name })); } catch (e) {} }
+function loadLocal() { try { return JSON.parse(localStorage.getItem("chain-state") || "{}"); } catch (e) { return {}; } }
+function initFirebase() {
+  if (N.db) return true;
+  if (typeof FB === "undefined") { N.err = "Le module Firebase n'a pas pu se charger. Recharge la page."; return false; }
+  try {
+    N.db = FB.getDatabase(FB.initializeApp(FIREBASE_CONFIG));
+    const emu = window.UNDERCOVER_FB_EMULATOR; if (emu) FB.connectDatabaseEmulator(N.db, emu.host, emu.port); // tests uniquement
+    FB.onValue(FB.ref(N.db, ".info/connected"), s => { N.connected = !!s.val(); if (N.connected) N.everConnected = true; if (N.code) render(); });
+    FB.onValue(FB.ref(N.db, ".info/serverTimeOffset"), s => { N.offset = s.val() || 0; });
+    return true;
+  } catch (e) { N.err = "Connexion à Firebase impossible."; return false; }
+}
+const R = path => FB.ref(N.db, `games/${N.code}${path ? "/" + path : ""}`);
+function errText(e) { return /permission/i.test(String(e?.code || e?.message || e)) ? "Firebase refuse l'accès (règles de la base de données)." : "L'action n'a pas pu être enregistrée. Vérifie ta connexion et réessaie."; }
+function normS(v) {
+  const s = JSON.parse(JSON.stringify(v || {}));
+  s.lobby = s.lobby || {}; s.order = arr(s.order); s.done = s.done || {}; s.step = s.step || 0; s.phase = s.phase || "lobby";
+  s.reveal = s.reveal || { chain: 0, upto: 0 };
+  return s;
+}
+async function actS(fn) {
+  if (!N.db || !N.code) return false;
+  try {
+    const res = await FB.runTransaction(R("s"), cur => { if (cur === null) return null; const s = normS(cur); if (fn(s) === false) return undefined; return JSON.parse(JSON.stringify(s)); });
+    return res.committed;
+  } catch (e) { N.err = errText(e); render(); return false; }
+}
+const lobbyList = s => Object.entries(s.lobby || {}).map(([id, p]) => ({ id, name: p.name, joinedAt: p.joinedAt || 0 })).sort((a, b) => a.joinedAt - b.joinedAt);
+const nameOf = id => N.s?.lobby?.[id]?.name || "?";
+
+/* ---------- logique des chaînes ---------- */
+// Avec n joueurs, il y a n chaînes et n étapes. À l'étape k, le joueur d'indice i travaille sur la chaîne (i - k) mod n.
+// Étape 0 : écrire une phrase ; étapes impaires : dessiner ; étapes paires : décrire le dessin reçu.
+const stepType = k => k === 0 ? "start" : k % 2 ? "draw" : "guess";
+const chainFor = (s, pid, k = s.step) => { const n = s.order.length, i = s.order.indexOf(pid); return i < 0 ? -1 : ((i - k) % n + n) % n; };
+function advance(s) {
+  if (s.step + 1 >= s.order.length) { s.phase = "reveal"; s.reveal = { chain: 0, upto: 0 }; s.done = {}; delete s.deadline; return; }
+  s.step += 1; s.done = {}; s.deadline = nowS() + STEP_MS;
+}
+async function submit(entry) {
+  const s = N.s, k = s.step, key = `${N.code}-${s.startedAt}-${k}`;
+  if (N.sentKey === key) return;
+  N.sentKey = key; N.busy = true; render();
+  const c = chainFor(s, N.me, k);
+  try {
+    await FB.set(R(`e/${c}/${k}`), { by: N.me, ...entry });
+    await actS(t => { if (t.phase !== "play" || t.step !== k) return false; t.done[N.me] = true; if (t.order.every(id => t.done[id])) advance(t); });
+  } catch (e) { N.sentKey = null; N.err = errText(e); }
+  N.busy = false; render();
+}
+// Si un joueur ne répond pas (téléphone en veille…), n'importe qui fait avancer la partie après le chrono + 8 s.
+async function forceAdvance() {
+  const s = N.s, k = s.step;
+  if (N.forcing || s.phase !== "play") return;
+  N.forcing = true;
+  try {
+    for (const id of s.order) if (!s.done[id]) {
+      const c = chainFor(s, id, k);
+      await FB.runTransaction(R(`e/${c}/${k}`), cur => cur !== null ? undefined : { by: id, t: stepType(k) === "draw" ? "draw" : "text", x: "", missing: true });
+    }
+    await actS(t => { if (t.phase !== "play" || t.step !== k) return false; advance(t); });
+  } catch (e) {}
+  N.forcing = false;
+}
+async function loadEntry(c, k) {
+  const key = `${N.s.startedAt}-${c}-${k}`;
+  if (key in N.cache) return N.cache[key];
+  N.cache[key] = null;
+  const snap = await FB.get(R(`e/${c}/${k}`));
+  N.cache[key] = snap.exists() ? snap.val() : { x: "", missing: true };
+  return N.cache[key];
+}
+
+/* ---------- dessin (plusieurs traits, couleurs, tailles) ---------- */
+// Coordonnées entières de 0 à 1000 ; un dessin = liste de traits { c: couleur, w: taille, p: [x0, y0, x1, y1, …] }.
+const PAD = { strokes: [], cur: null, color: 0, size: 1, key: null };
+const MAX_POINTS = 5000;
+const countPts = () => PAD.strokes.reduce((t, s) => t + s.p.length / 2, 0);
+function paintDrawing(canvas, strokes, live) {
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1, size = canvas.clientWidth;
+  if (canvas.width !== Math.round(size * dpr)) { canvas.width = Math.round(size * dpr); canvas.height = Math.round(size * dpr); }
+  const ctx = canvas.getContext("2d"), k = canvas.width / 1000;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (const s of (live ? strokes.concat(PAD.cur ? [PAD.cur] : []) : strokes)) {
+    const p = arr(s.p); if (p.length < 2) continue;
+    ctx.strokeStyle = PALETTE[s.c] || PALETTE[0]; ctx.lineWidth = (SIZES[s.w] || SIZES[1]) * k;
+    ctx.beginPath(); ctx.moveTo(p[0] * k, p[1] * k);
+    if (p.length === 2) ctx.lineTo(p[0] * k + 0.1, p[1] * k);
+    for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i] * k, p[i + 1] * k);
+    ctx.stroke();
+  }
+}
+function bindPad(canvas) {
+  if (!canvas) return;
+  paintDrawing(canvas, PAD.strokes, true);
+  const pos = e => { const r = canvas.getBoundingClientRect(); return [Math.round(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * 1000), Math.round(Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) * 1000)]; };
+  const begin = pt => { if (countPts() > MAX_POINTS) return false; PAD.cur = { c: PAD.color, w: PAD.size, p: pos(pt) }; paintDrawing(canvas, PAD.strokes, true); return true; };
+  const move = pt => {
+    if (!PAD.cur) return;
+    const [x, y] = pos(pt), p = PAD.cur.p, n = p.length;
+    if (Math.hypot(x - p[n - 2], y - p[n - 1]) < 4) return;
+    p.push(x, y); paintDrawing(canvas, PAD.strokes, true);
+  };
+  const end = () => { if (!PAD.cur) return; PAD.strokes.push(PAD.cur); PAD.cur = null; paintDrawing(canvas, PAD.strokes, true); };
+  // Tactile : événements tactiles (pas de capture du pointeur, qui bloquait les boutons sur certains téléphones).
+  canvas.addEventListener("touchstart", e => { if (e.touches.length === 1 && begin(e.touches[0])) e.preventDefault(); }, { passive: false });
+  canvas.addEventListener("touchmove", e => { if (PAD.cur) { e.preventDefault(); move(e.touches[0]); } }, { passive: false });
+  canvas.addEventListener("touchend", e => { if (PAD.cur) { e.preventDefault(); end(); } }, { passive: false });
+  canvas.addEventListener("touchcancel", end);
+  canvas.addEventListener("mousedown", e => {
+    if (e.button !== 0 || !begin(e)) return;
+    e.preventDefault();
+    const mm = ev => move(ev), mu = () => { window.removeEventListener("mousemove", mm); window.removeEventListener("mouseup", mu); end(); };
+    window.addEventListener("mousemove", mm); window.addEventListener("mouseup", mu);
+  });
+}
+const drawingData = () => ({ t: "draw", d: PAD.strokes.map(s => ({ c: s.c, w: s.w, p: s.p })) });
+
+/* ---------- rendu ---------- */
+let renderTimer = null;
+function render() {
+  if (PAD.cur) { clearTimeout(renderTimer); renderTimer = setTimeout(render, 150); return; } // ne pas casser un trait en cours
+  const kept = {}; document.querySelectorAll("#screen input[type=text]").forEach(i => kept[i.id] = i.value);
+  const active = document.activeElement?.id;
+  const s = N.code ? N.s : null;
+  $("roundTag").textContent = !s ? "En ligne" : s.phase === "lobby" ? `Salon · ${N.code}` : s.phase === "play" ? `Étape ${s.step + 1}/${s.order.length}` : "Révélation";
+  const offline = N.code && N.everConnected && !N.connected ? `<p class="notice">Connexion perdue. Le jeu se reconnecte tout seul.</p>` : "";
+  const leave = !N.code ? "" : N.confirmLeave
+    ? `<div class="leavebox"><p class="warn">Quitter la partie ${esc(N.code)} ?</p><div class="row"><button class="primary" data-act="leave-yes">Oui, quitter</button><button data-act="leave-no">Non, rester</button></div></div>`
+    : `<button class="leavebtn" data-act="leave">Quitter la partie</button>`;
+  $("screen").innerHTML = `<section class="card">${offline}${view(s)}${N.err ? `<p class="err" role="alert">${esc(N.err)}</p>` : ""}</section>${leave}`;
+  Object.entries(kept).forEach(([id, v]) => { const i = $(id); if (i && !i.value) i.value = v; });
+  if (active && $(active)?.tagName === "INPUT") $(active).focus();
+  if ($("pad")) bindPad($("pad"));
+  document.querySelectorAll("canvas[data-c]").forEach(c => { const e = N.cache[c.dataset.key]; if (e?.d) paintDrawing(c, arr(e.d), false); });
+  tick();
+}
+function entryHTML(e, key, label) {
+  if (!e) return `<p class="muted">Chargement…</p>`;
+  const by = label ? `<span class="by">${esc(label)}</span>` : "";
+  if (e.t === "draw") return `<div class="entry">${by}${arr(e.d).length ? `<div class="canvasbox"><canvas data-c="1" data-key="${esc(key)}" aria-label="Dessin"></canvas></div>` : `<p class="bubble muted">(pas de dessin)</p>`}</div>`;
+  return `<div class="entry">${by}<p class="bubble">${e.x ? esc(e.x) : `<span class="muted">(pas de réponse)</span>`}</p></div>`;
+}
+function view(s) {
+  const dis = N.busy ? "disabled" : "";
+  if (!N.code) {
+    const hashCode = (location.hash.slice(1).match(/^[A-Za-z]{4}$/) || [""])[0].toUpperCase();
+    return `
+      <div><span class="tag">En ligne</span><h2>Chacun sur son téléphone</h2></div>
+      <p class="muted">Pas besoin de compte. Il faut au moins ${MIN_PLAYERS} joueurs.</p>
+      <label class="tag" for="nName">Ton pseudo</label>
+      <input type="text" id="nName" maxlength="20" placeholder="Ex. Léa" autocomplete="off" value="${esc(N.name || "")}">
+      ${hashCode ? "" : `<button class="primary" data-act="create" ${dis}>Créer une partie</button><div class="sep">ou</div>`}
+      <form class="row" id="joinForm"><input type="text" id="nCode" maxlength="4" placeholder="Code (ex. KTRW)" aria-label="Code de la partie" autocomplete="off" style="text-transform:uppercase" value="${esc(hashCode)}"><button type="submit" class="${hashCode ? "primary" : ""}" ${dis}>Rejoindre</button></form>`;
+  }
+  const head = `<div class="codebox"><div><span class="tag">Code de la partie</span><div class="code">${esc(N.code)}</div></div>${s?.phase === "play" ? `<span class="timer" id="timer"></span>` : ""}</div>`;
+  if (!s) return `${head}<p class="muted">Chargement de la partie…</p>`;
+  if (!s.lobby[N.me]) return `${head}<p class="notice">Tu n'es plus dans cette partie.</p><button class="primary" data-act="rejoin" ${dis}>Rejoindre à nouveau</button>`;
+  const host = s.host === N.me;
+
+  if (s.phase === "lobby") {
+    const list = lobbyList(s), n = list.length;
+    return `${head}
+      <div class="mine"><span class="tag">Inviter des amis</span><p class="muted">Envoie le lien : il ouvre directement cette partie.</p>
+        <button class="primary" data-act="invite">${N.copied ? "Invitation copiée ✓" : "Inviter"}</button>
+        ${N.showInviteText ? `<textarea readonly rows="3">${esc(inviteText())}</textarea>` : ""}</div>
+      <div><span class="tag">Joueurs ${n}/${MAX_PLAYERS}</span></div>
+      <ul class="players">${list.map((p, i) => `<li><span class="num">${i + 1}</span><span class="name">${esc(p.name)}${p.id === N.me ? " (toi)" : ""}${p.id === s.host ? ` <span class="muted">· a créé la partie</span>` : ""}</span></li>`).join("")}</ul>
+      ${host ? `<button class="primary" data-act="start" ${n >= MIN_PLAYERS && !N.busy ? "" : "disabled"}>${n >= MIN_PLAYERS ? "Lancer la partie" : `Encore ${MIN_PLAYERS - n} joueur${MIN_PLAYERS - n > 1 ? "s" : ""} minimum`}</button>`
+             : `<p class="notice">En attente : ${esc(nameOf(s.host))} lancera la partie.</p>`}`;
+  }
+
+  if (s.phase === "play") {
+    const k = s.step, type = stepType(k), inGame = s.order.includes(N.me);
+    const prog = `<div class="progress">${s.order.map(id => `<span class="${s.done[id] ? "ok" : ""}">${esc(nameOf(id))}</span>`).join("")}</div>`;
+    if (!inGame) return `${head}<p class="notice">Une partie est en cours. Tu joueras à la prochaine.</p>${prog}`;
+    if (s.done[N.me] || N.sentKey === `${N.code}-${s.startedAt}-${k}`) return `${head}<h2>C'est envoyé !</h2><p class="muted">En attente des autres joueurs…</p>${prog}`;
+    if (type === "start") return `${head}
+      <span class="tag">Étape 1 · écris une phrase</span><h2>Que faut-il dessiner ?</h2>
+      <p class="muted">Écris une phrase courte et visuelle. Le joueur suivant devra la dessiner.</p>
+      <form class="row" id="textForm"><input type="text" id="textIn" maxlength="80" placeholder="Ex. Un chat qui fait du ski" autocomplete="off"><button type="submit" class="primary" ${dis}>Valider</button></form>
+      <button class="ghost" data-act="idea">Une idée ?</button>${prog}`;
+    const c = chainFor(s, N.me), key = `${s.startedAt}-${c}-${k - 1}`, prev = N.cache[key];
+    if (!(key in N.cache)) loadEntry(c, k - 1).then(render);
+    if (type === "draw") return `${head}
+      <span class="tag">Étape ${k + 1} · dessine</span>
+      <p class="bubble">${prev ? (prev.x ? esc(prev.x) : `<span class="muted">(pas de phrase : dessine ce que tu veux !)</span>`) : "Chargement…"}</p>
+      <div class="canvasbox live"><canvas id="pad" aria-label="Zone de dessin"></canvas></div>
+      <div class="tools">${PALETTE.map((col, i) => `<button class="swatch" data-act="color" data-i="${i}" style="background:${col}" aria-label="Couleur ${i + 1}${i === PALETTE.length - 1 ? " (gomme blanche)" : ""}" aria-pressed="${PAD.color === i}"></button>`).join("")}</div>
+      <div class="tools">${SIZES.map((sz, i) => `<button class="size" data-act="size" data-i="${i}" aria-pressed="${PAD.size === i}">${["Fin", "Moyen", "Épais"][i]}</button>`).join("")}
+        <button data-act="undo">↶ Annuler</button><button data-act="clear">Tout effacer</button></div>
+      <button class="primary" data-act="send-draw" ${dis}>J'ai fini mon dessin</button>${prog}`;
+    return `${head}
+      <span class="tag">Étape ${k + 1} · décris</span><h2>Qu'est-ce que c'est ?</h2>
+      ${entryHTML(prev, key)}
+      <form class="row" id="textForm"><input type="text" id="textIn" maxlength="80" placeholder="Décris ce dessin en une phrase" autocomplete="off"><button type="submit" class="primary" ${dis}>Valider</button></form>${prog}`;
+  }
+
+  if (s.phase === "reveal") {
+    const { chain, upto } = s.reveal, n = s.order.length, owner = s.order[chain];
+    const items = [];
+    for (let k = 0; k <= upto; k++) {
+      const key = `${s.startedAt}-${chain}-${k}`;
+      if (!(key in N.cache)) loadEntry(chain, k).then(render);
+      const e = N.cache[key];
+      items.push(entryHTML(e, key, e ? `${k === 0 ? "Phrase de départ" : stepType(k) === "draw" ? "Dessin" : "Description"} · ${nameOf(e.by)}` : ""));
+    }
+    const lastStep = upto >= n - 1, lastChain = chain >= n - 1;
+    return `${head}
+      <span class="tag">Chaîne ${chain + 1}/${n}</span><h2>La chaîne de ${esc(nameOf(owner))}</h2>
+      ${items.join("")}
+      ${host ? `<button class="primary" data-act="reveal-next" ${dis}>${!lastStep ? "Étape suivante" : !lastChain ? "Chaîne suivante" : "Terminer"}</button>`
+             : `<p class="notice">${esc(nameOf(s.host))} fait défiler la révélation.</p>`}`;
+  }
+
+  if (s.phase === "end") return `${head}<div class="big">Fin de la partie</div><p class="muted">Toutes les chaînes ont été révélées.</p>
+    ${host ? `<button class="primary" data-act="again" ${dis}>Rejouer avec le même groupe</button>` : `<p class="notice">En attente : ${esc(nameOf(s.host))} peut relancer une partie.</p>`}`;
+  return head;
+}
+
+/* ---------- chrono ---------- */
+function tick() {
+  const s = N.s, el = $("timer");
+  if (!s || s.phase !== "play" || !s.deadline) return;
+  const left = s.deadline - nowS();
+  if (el) { const sec = Math.max(0, Math.ceil(left / 1000)); el.textContent = `${sec} s`; el.classList.toggle("low", sec <= 10); }
+  const k = s.step, mine = s.order.includes(N.me) && !s.done[N.me] && N.sentKey !== `${N.code}-${s.startedAt}-${k}`;
+  if (left <= 0 && mine) { // temps écoulé : on envoie ce qui est fait
+    if (stepType(k) === "draw") submit(drawingData()); else submit({ t: "text", x: ($("textIn")?.value || "").trim().slice(0, 80) });
+  }
+  if (left <= -GRACE_MS && !s.order.every(id => s.done[id])) forceAdvance();
+}
+setInterval(tick, 500);
+
+/* ---------- connexion à une partie ---------- */
+function watch(code) {
+  N.unsub?.(); N.code = code; N.s = null; saveLocal();
+  N.unsub = FB.onValue(FB.ref(N.db, `games/${code}/s`), snap => {
+    if (!snap.exists()) { N.err = `La partie ${code} n'existe plus.`; stopWatching(); render(); return; }
+    const prev = N.s; N.s = normS(snap.val());
+    if (!prev || prev.step !== N.s.step || prev.phase !== N.s.phase || prev.startedAt !== N.s.startedAt) { PAD.strokes = []; PAD.cur = null; }
+    render();
+  }, e => { N.err = errText(e); render(); });
+}
+function stopWatching() { N.unsub?.(); N.unsub = null; N.code = null; N.s = null; saveLocal(); }
+async function createGame(name) {
+  if (!initFirebase()) return render();
+  N.busy = true; render();
+  try {
+    for (let i = 0; i < 6; i++) {
+      const code = Array.from({ length: 4 }, () => pick(CODE_CHARS)).join("");
+      const res = await FB.runTransaction(FB.ref(N.db, "games/" + code), cur => cur !== null ? undefined
+        : { type: "chain", code, screen: "chain", host: N.me, createdAt: Date.now(), s: { phase: "lobby", host: N.me, lobby: { [N.me]: { name, joinedAt: Date.now() } } } });
+      if (res.committed) { N.busy = false; watch(code); return; }
+    }
+    N.err = "Impossible de trouver un code libre. Réessaie.";
+  } catch (e) { N.err = errText(e); }
+  N.busy = false; render();
+}
+async function joinGame(code, name) {
+  if (!initFirebase()) return render();
+  N.busy = true; N.err = ""; render();
+  try {
+    const t = await FB.get(FB.ref(N.db, `games/${code}/type`));
+    if (!t.exists()) N.err = `Aucune partie avec le code ${code}.`;
+    else if (t.val() !== "chain") N.err = `Le code ${code} correspond à une partie d'un autre jeu.`;
+    else {
+      N.code = code; let full = false;
+      const ok = await actS(s => {
+        if (!s.lobby[N.me] && Object.keys(s.lobby).length >= MAX_PLAYERS) { full = true; return false; }
+        s.lobby[N.me] = { name, joinedAt: s.lobby[N.me]?.joinedAt || Date.now() };
+      });
+      if (ok) { N.busy = false; watch(code); return; }
+      N.code = null; N.err = full ? `Cette partie est complète (${MAX_PLAYERS} joueurs).` : N.err || "Impossible de rejoindre. Réessaie.";
+    }
+  } catch (e) { N.err = errText(e); N.code = null; }
+  N.busy = false; render();
+}
+const inviteURL = () => location.origin + location.pathname + "#" + N.code;
+const inviteText = () => `Rejoins ma partie de Gribouillis en chaîne ! Ouvre ce lien : ${inviteURL()} (code ${N.code})`;
+async function invite() {
+  if (navigator.share) { try { await navigator.share({ title: "Gribouillis en chaîne", text: `Rejoins ma partie de Gribouillis en chaîne ! (code ${N.code})`, url: inviteURL() }); return; } catch (e) { if (e?.name === "AbortError") return; } }
+  try { await navigator.clipboard.writeText(inviteText()); N.copied = true; setTimeout(() => { N.copied = false; render(); }, 2500); } catch (e) { N.showInviteText = true; }
+  render();
+}
+
+/* ---------- actions ---------- */
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-act]");
+  if (!b || b.disabled) return;
+  const a = b.dataset.act, me = N.me;
+  N.err = "";
+  switch (a) {
+    case "create": { const name = $("nName").value.trim(); if (!name) { N.err = "Choisis un pseudo d'abord."; break; } N.name = name; createGame(name); return; }
+    case "rejoin": joinGame(N.code, N.name || "Joueur"); return;
+    case "leave": N.confirmLeave = true; break;
+    case "leave-no": N.confirmLeave = false; break;
+    case "leave-yes": N.confirmLeave = false; if (N.s?.phase === "lobby" && N.s.host !== me) await actS(s => { if (s.phase !== "lobby") return false; delete s.lobby[me]; }); stopWatching(); break;
+    case "invite": invite(); return;
+    case "start": N.busy = true; render();
+      try { await FB.set(R("e"), null); } catch (x) {}
+      await actS(s => {
+        if (s.host !== me || s.phase !== "lobby") return false;
+        const list = lobbyList(s); if (list.length < MIN_PLAYERS) return false;
+        s.order = shuffle(list.slice(0, MAX_PLAYERS).map(p => p.id)); s.phase = "play"; s.step = 0; s.done = {};
+        s.startedAt = Date.now(); s.deadline = nowS() + STEP_MS;
+      });
+      N.busy = false; break;
+    case "idea": { const i = $("textIn"); if (i) i.value = pick(PROMPTS); return; }
+    case "color": PAD.color = Number(b.dataset.i); break;
+    case "size": PAD.size = Number(b.dataset.i); break;
+    case "undo": PAD.strokes.pop(); break;
+    case "clear": PAD.strokes = []; break;
+    case "send-draw": submit(drawingData()); return;
+    case "reveal-next": actS(s => {
+      if (s.host !== me || s.phase !== "reveal") return false;
+      const n = s.order.length;
+      if (s.reveal.upto < n - 1) s.reveal.upto += 1;
+      else if (s.reveal.chain < n - 1) s.reveal = { chain: s.reveal.chain + 1, upto: 0 };
+      else s.phase = "end";
+    }); return;
+    case "again": N.busy = true; render();
+      try { await FB.set(R("e"), null); } catch (x) {}
+      await actS(s => { if (s.host !== me) return false; s.phase = "lobby"; s.order = []; s.step = 0; s.done = {}; delete s.deadline; s.reveal = { chain: 0, upto: 0 }; });
+      N.cache = {}; N.busy = false; break;
+  }
+  render();
+});
+document.addEventListener("submit", e => {
+  e.preventDefault();
+  if (e.target.id === "joinForm") {
+    const code = $("nCode").value.trim().toUpperCase(), name = $("nName").value.trim();
+    if (!name) N.err = "Choisis un pseudo d'abord."; else if (!/^[A-Z]{4}$/.test(code)) N.err = "Le code fait 4 lettres.";
+    else { N.name = name; joinGame(code, name); return; }
+    render();
+  }
+  if (e.target.id === "textForm") {
+    const x = $("textIn").value.trim();
+    if (!x) { N.err = "Écris quelque chose avant de valider."; render(); return; }
+    submit({ t: "text", x: x.slice(0, 80) });
+  }
+});
+window.addEventListener("resize", () => render());
+
+(function start() {
+  N.me = myPid();
+  const saved = loadLocal(); N.name = saved.name || "";
+  const hash = location.hash.slice(1).toUpperCase();
+  if (saved.code && (!/^[A-Z]{4}$/.test(hash) || hash === saved.code) && initFirebase()) watch(saved.code);
+  render();
+})();
+</script>
+</body>
+</html>
