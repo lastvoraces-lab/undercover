@@ -51,8 +51,16 @@ h1 span { color: var(--accent); }
 .game:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 @media (prefers-reduced-motion: no-preference) { .game:hover { transform: translateY(-2px); } }
 .cover { aspect-ratio: 1; max-width: 100%; border-radius: 12px; background: var(--ink); display: grid; place-items: center; position: relative; overflow: hidden; }
-.cover b { font-family: var(--display); font-weight: 800; font-size: 44px; color: var(--accent); line-height: 1; }
-.cover i { position: absolute; inset: auto 10px 10px 10px; height: 8px; border-radius: 4px; background: var(--bg); opacity: .25; }
+.cover svg { width: 100%; height: 100%; display: block; }
+.cover .crowd { fill: var(--bg); opacity: .3; }
+.cover .spy { fill: var(--accent); }
+.cover .mask { fill: var(--ink); }
+.cover .eye { fill: var(--accent); }
+.cover .q { font-family: var(--display); font-weight: 800; font-size: 22px; fill: var(--accent); }
+@media (prefers-reduced-motion: no-preference) {
+  .cover .q { animation: bob 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes bob { 50% { transform: translateY(-3px); } }
+}
 .game h2 { font-family: var(--display); font-weight: 700; font-size: 22px; margin: 0 0 6px; }
 .game p { margin: 0 0 12px; color: var(--muted); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
@@ -74,7 +82,21 @@ footer { color: var(--muted); font-size: 13px; }
   <ul class="games" aria-label="Jeux disponibles">
     <li>
       <a class="game" href="undercover/">
-        <div class="cover" aria-hidden="true"><b>?</b><i></i></div>
+        <div class="cover" aria-hidden="true">
+          <!-- Trois silhouettes identiques… sauf celle du milieu, masquée : l'intrus. -->
+          <svg viewBox="0 0 120 100" role="presentation">
+            <g class="crowd">
+              <circle cx="24" cy="50" r="11"/><path d="M6 92c0-14 8-24 18-24s18 10 18 24z"/>
+              <circle cx="96" cy="50" r="11"/><path d="M78 92c0-14 8-24 18-24s18 10 18 24z"/>
+            </g>
+            <g class="spy">
+              <circle cx="60" cy="44" r="14"/><path d="M37 92c0-17 10-30 23-30s23 13 23 30z"/>
+              <path class="mask" d="M44 41c5-3 11-3 16 0 5-3 11-3 16 0v6c-5 3-11 3-16 0-5 3-11 3-16 0z"/>
+              <circle class="eye" cx="52" cy="44" r="2"/><circle class="eye" cx="68" cy="44" r="2"/>
+            </g>
+            <text class="q" x="60" y="24" text-anchor="middle">?</text>
+          </svg>
+        </div>
         <div>
           <h2>Undercover</h2>
           <p>Tout le monde a le même mot… sauf l'intrus, qui en a un très proche. Décrivez votre mot, démasquez l'Undercover et méfiez-vous de Mr. White.</p>
