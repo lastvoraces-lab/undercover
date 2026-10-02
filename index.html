@@ -93,6 +93,9 @@ input[type="text"] { font: inherit; padding: 11px 12px; border-radius: 10px; bor
 .leavebox { margin-top: 28px; padding: 16px; border-radius: 12px; border: 1px solid var(--under); display: flex; flex-direction: column; gap: 12px; }
 .wordbtn { padding: 12px 16px; }
 .def { margin: 0; text-align: center; font-size: 14px; color: var(--muted); font-style: italic; max-width: 40ch; align-self: center; }
+.stepper { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.stepper .x { padding: 8px 16px; font-size: 18px; }
+.stepper .count { font-family: var(--display); font-size: 20px; min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
 .err { color: var(--under); font-weight: 700; }
 .sep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
 .sep::before, .sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -143,15 +146,16 @@ input[type="text"] { font: inherit; padding: 11px 12px; border-radius: 10px; bor
   <details class="card rules">
     <summary>Règles et barème de points</summary>
     <ul>
-      <li>3 à 5 joueurs. Mode <b>Un seul téléphone</b> : on se passe l'appareil. Mode <b>En ligne</b> : chacun joue sur son téléphone avec le lien ou le code de la partie. La partie est gardée en ligne : on peut rejoindre même si les autres téléphones sont en veille.</li>
-      <li>Les <b class="r-civil">Civils</b> reçoivent un mot. L'<b class="r-under">Undercover</b> reçoit un mot proche, sans savoir qu'il est l'intrus. <b class="r-white">Mr. White</b> (option, à partir de 4 joueurs) n'a aucun mot.</li>
+      <li>3 à 10 joueurs. Mode <b>Un seul téléphone</b> : on se passe l'appareil. Mode <b>En ligne</b> : chacun joue sur son téléphone avec le lien ou le code de la partie. La partie est gardée en ligne : on peut rejoindre même si les autres téléphones sont en veille.</li>
+      <li>Les <b class="r-civil">Civils</b> reçoivent un mot. Les <b class="r-under">Undercover</b> reçoivent un mot proche, sans savoir qu'ils sont les intrus. <b class="r-white">Mr. White</b> (option, à partir de 4 joueurs) n'a aucun mot.</li>
+      <li>Avant la partie, on choisit le nombre d'Undercover. Il faut toujours au moins 2 Civils, et au moins autant de Civils que d'intrus (Undercover + Mr. White).</li>
       <li>Chacun décrit son mot en un mot ou une courte phrase. L'ordre de parole est tiré au hasard à chaque tour. Mr. White ne commence jamais.</li>
       <li>Un joueur qui a oublié son mot peut le revoir pendant la partie.</li>
       <li>Après chaque tour de parole, on choisit le joueur à éliminer. Son rôle est révélé.</li>
       <li>En cas d'égalité, personne n'est éliminé : on relance un tour de parole, puis on revote. En ligne, l'égalité est détectée automatiquement.</li>
       <li>Mr. White éliminé peut deviner le mot des Civils : s'il trouve, il gagne seul. Les accents, les majuscules, le pluriel et une petite faute de frappe sont acceptés.</li>
       <li>Les Civils gagnent quand tous les intrus sont éliminés. Les intrus gagnent quand il ne reste plus qu'un seul Civil.</li>
-      <li><b>Points :</b> victoire des Civils = +2 pour chaque Civil (même éliminé). Victoire des intrus = +10 pour l'Undercover et +6 pour Mr. White, s'ils sont encore en jeu. Mr. White qui devine le mot = +6.</li>
+      <li><b>Points :</b> victoire des Civils = +2 pour chaque Civil (même éliminé). Victoire des intrus = +10 pour chaque Undercover et +6 pour Mr. White, s'ils sont encore en jeu. Mr. White qui devine le mot = +6.</li>
       <li><b>Fin de partie :</b> le premier joueur à atteindre 50 points gagne. Si plusieurs joueurs dépassent 50 dans la même manche, celui qui a le plus de points l'emporte ; en cas d'égalité, ils gagnent ensemble.</li>
     </ul>
   </details>
@@ -160,7 +164,7 @@ input[type="text"] { font: inherit; padding: 11px 12px; border-radius: 10px; bor
 <script>
 const POINTS = { civil: 2, under: 10, white: 6 };
 const GOAL = 50;
-const MAX_PLAYERS = 5;
+const MAX_PLAYERS = 10;
 const ROLE_LABEL = { civil: "Civil", under: "Undercover", white: "Mr. White" };
 const ROLE_CLASS = { civil: "r-civil", under: "r-under", white: "r-white" };
 const TIE_NOTICE = "Égalité au vote : personne n'est éliminé, nouveau tour de parole.";
@@ -189,13 +193,36 @@ const defOf = w => (typeof DEFINITIONS !== "undefined" && DEFINITIONS[w]) || "";
 const defHTML = w => defOf(w) ? `<p class="def">${esc(defOf(w))}</p>` : "";
 const wordOf = (R, id) => R.roles[id] === "white" ? null : (R.roles[id] === "under" ? R.underWord : R.civilWord);
 
+/* ---------- nombre d'intrus ----------
+   Il faut au moins 2 Civils, et au moins autant de Civils que d'intrus (Undercover + Mr. White).
+   Ex. : 3 joueurs → 1 Undercover ; 4 → 2 intrus ; 10 → 5 intrus. Mr. White possible dès 4 joueurs. */
+const maxIntruders = n => Math.max(1, Math.min(Math.floor(n / 2), n - 2));
+function rolesConfig(n, under, white) {
+  const max = maxIntruders(n);
+  const w = white && n >= 4 && max >= 2 ? 1 : 0;
+  const u = Math.min(Math.max(1, under || 1), max - w);
+  return { u, w };
+}
+// Réglages d'avant-partie (Undercover + Mr. White). `p` préfixe les actions ("" en local, "n-" en ligne).
+function settingsHTML(n, under, white, p, editable) {
+  const { u, w } = rolesConfig(n, under, white), max = maxIntruders(n);
+  const whiteOk = n >= 4 && max >= 2;
+  if (!editable) return `<p class="muted">Undercover : <b>${u}</b> · Mr. White : <b>${w ? "oui" : "non"}</b></p>`;
+  return `
+      <div class="stepper"><span><b>Nombre d'Undercover</b><br><span class="muted">${max - w > 1 ? `De 1 à ${max - w} avec ${n} joueurs.` : `1 seul avec ${n} joueurs${w ? " et Mr. White" : ""}.`}</span></span>
+        <span class="row"><button class="x" data-act="${p}under-minus" ${u > 1 ? "" : "disabled"} aria-label="Un Undercover de moins">−</button><b class="count" aria-live="polite">${u}</b><button class="x" data-act="${p}under-plus" ${u < max - w ? "" : "disabled"} aria-label="Un Undercover de plus">+</button></span></div>
+      <label class="toggle"><input type="checkbox" id="${p}whiteToggle" ${w ? "checked" : ""} ${whiteOk ? "" : "disabled"}>
+        <span><b>Ajouter Mr. White</b><br><span class="muted">${whiteOk ? "Un joueur sans mot, qui doit bluffer." : "Disponible à partir de 4 joueurs."}</span></span></label>`;
+}
+
 /* ---------- moteur de jeu (commun aux deux modes, agit sur une partie G) ---------- */
 function startRound(G) {
   if (G.players.some(p => p.score >= GOAL)) G.players.forEach(p => p.score = 0);
   const ids = G.players.map(p => p.id);
   const pair = shuffle(PAIRS[Math.floor(Math.random() * PAIRS.length)]);
   const roles = {};
-  shuffle(ids).forEach((id, i) => { roles[id] = i === 0 ? "under" : (i === 1 && G.useWhite && ids.length >= 4 ? "white" : "civil"); });
+  const { u, w } = rolesConfig(ids.length, G.underCount, G.useWhite);
+  shuffle(ids).forEach((id, i) => { roles[id] = i < u ? "under" : i < u + w ? "white" : "civil"; });
   G.roundNo += 1;
   G.lastGains = {};
   G.R = { civilWord: pair[0], underWord: pair[1], roles, alive: ids.slice(), seat: shuffle(ids),
@@ -366,14 +393,12 @@ const LOCAL = {
   setup() {
     const n = S.players.length;
     const list = S.players.map((p, i) => `<li><span class="num">${i + 1}</span><span class="name">${esc(p.name)}</span><button class="ghost x" data-act="remove" data-id="${p.id}" aria-label="Retirer ${esc(p.name)}">Retirer</button></li>`).join("");
-    const whiteOk = n >= 4;
     return `
       <div><span class="tag">Joueurs ${n}/${MAX_PLAYERS}</span><h2>Qui joue ?</h2></div>
       <ul class="players">${list}</ul>
       ${n < MAX_PLAYERS ? `<form class="row" id="addForm"><input type="text" id="newName" maxlength="20" placeholder="Prénom du joueur" aria-label="Prénom du joueur" autocomplete="off"><button type="submit">Ajouter</button></form>`
               : `<p class="muted">${MAX_PLAYERS} joueurs maximum : la table est complète.</p>`}
-      <label class="toggle"><input type="checkbox" id="whiteToggle" ${S.useWhite && whiteOk ? "checked" : ""} ${whiteOk ? "" : "disabled"}>
-        <span><b>Ajouter Mr. White</b><br><span class="muted">${whiteOk ? "Un joueur sans mot, qui doit bluffer." : "Disponible à partir de 4 joueurs."}</span></span></label>
+      ${settingsHTML(n, S.underCount, S.useWhite, "", true)}
       <button class="primary" data-act="start" ${n >= 3 ? "" : "disabled"}>${n >= 3 ? (S.players.some(p => p.score >= GOAL) ? "Nouvelle partie (scores à zéro)" : "Lancer la manche") : `Encore ${3 - n} joueur${3 - n > 1 ? "s" : ""} minimum`}</button>`;
   },
   reveal() {
@@ -464,7 +489,12 @@ const LOCAL = {
 function localAction(act, rawId) {
   const R = S.R, id = Number(rawId);
   switch (act) {
-    case "remove": S.players = S.players.filter(p => p.id !== id); if (S.players.length < 4) S.useWhite = false; break;
+    case "remove": S.players = S.players.filter(p => p.id !== id); break;
+    case "under-minus": case "under-plus": {
+      const { u, w } = rolesConfig(S.players.length, S.underCount, S.useWhite);
+      S.underCount = Math.min(Math.max(1, u + (act === "under-plus" ? 1 : -1)), maxIntruders(S.players.length) - w);
+      break;
+    }
     case "start": S.peek = null; startRound(S); break;
     case "peekOpen": S.peek = { step: "pick" }; break;
     case "peekPick": S.peek = { step: "ready", id }; break;
@@ -628,7 +658,7 @@ async function joinGame(code, name) {
       if (res.committed) { N.busy = false; watch(code); return; }
     }
   } catch (e) { N.err = errText(e); N.busy = false; return render(); }
-  N.err = missing ? `Aucune partie avec le code ${code}.` : full ? "Cette partie est complète (5 joueurs)." : "Impossible de rejoindre. Réessaie.";
+  N.err = missing ? `Aucune partie avec le code ${code}.` : full ? `Cette partie est complète (${MAX_PLAYERS} joueurs).` : "Impossible de rejoindre. Réessaie.";
   N.busy = false; render();
 }
 
@@ -693,7 +723,7 @@ function netView(G) {
   if (!member) return `${head}<p class="notice">Tu n'es plus dans cette partie.</p><button class="primary" data-act="n-rejoin" ${dis}>Rejoindre à nouveau</button>`;
 
   if (G.screen === "lobby") {
-    const list = lobbyList(G), n = list.length, whiteOk = n >= 4;
+    const list = lobbyList(G), n = list.length;
     const rows = list.map((p, i) => `<li><span class="num">${i + 1}</span><span class="name">${esc(p.name)}${p.id === N.me ? " (toi)" : ""}${p.id === G.host ? ` <span class="muted">· a créé la partie</span>` : ""}</span></li>`).join("");
     return `${head}
       <div class="mine">
@@ -705,10 +735,9 @@ function netView(G) {
       <div><span class="tag">Joueurs ${n}/${MAX_PLAYERS}</span></div>
       <ul class="players">${rows}</ul>
       ${G.host === N.me ? `
-      <label class="toggle"><input type="checkbox" id="nWhite" ${G.useWhite && whiteOk ? "checked" : ""} ${whiteOk ? "" : "disabled"}>
-        <span><b>Ajouter Mr. White</b><br><span class="muted">${whiteOk ? "Un joueur sans mot, qui doit bluffer." : "Disponible à partir de 4 joueurs."}</span></span></label>
+      ${settingsHTML(n, G.underCount, G.useWhite, "n-", true)}
       <button class="primary" data-act="n-start" ${n >= 3 && !N.busy ? "" : "disabled"}>${n >= 3 ? "Lancer la manche" : `Encore ${3 - n} joueur${3 - n > 1 ? "s" : ""} minimum`}</button>`
-      : `<p class="muted">Mr. White : ${G.useWhite && whiteOk ? "oui" : "non"}</p>
+      : `${settingsHTML(n, G.underCount, G.useWhite, "n-", false)}
       <p class="notice">En attente : ${esc(pName(G.host))} lancera la manche.</p>`}`;
   }
 
@@ -723,7 +752,7 @@ function netView(G) {
       </div>
       ${orderChips(R)}
       ${me ? `<button class="primary" data-act="n-spoke" data-autofocus ${dis}>${last ? "J'ai parlé, passer au vote" : "J'ai parlé"}</button>`
-           : `<button class="ghost" data-act="n-spoke" ${dis}>Passer : ${esc(pName(cur))} a parlé</button>`}`;
+           : G.host === N.me ? `<button class="ghost" data-act="n-spoke" ${dis}>Passer : ${esc(pName(cur))} a parlé</button>` : ""}`;
   }
 
   if (G.screen === "vote") {
@@ -787,7 +816,15 @@ function netAction(act_, rawId) {
     case "n-word": N.showWord = !N.showWord; break;
     case "n-invite": invite(); return;
     case "n-start": act(G => G.host === me ? startNext(G) : false); return;
-    case "n-spoke": act(G => { if (G.screen !== "speak") return false; advanceSpeaker(G); }); return;
+    case "n-spoke": act(G => { if (G.screen !== "speak" || (G.R.order[G.R.speakIdx] !== me && G.host !== me)) return false; advanceSpeaker(G); }); return;
+    case "n-under-minus": case "n-under-plus": {
+      const delta = act_ === "n-under-plus" ? 1 : -1;
+      act(G => {
+        if (G.screen !== "lobby" || G.host !== me) return false;
+        const n = lobbyList(G).length, { u, w } = rolesConfig(n, G.underCount, G.useWhite);
+        G.underCount = Math.min(Math.max(1, u + delta), maxIntruders(n) - w);
+      }); return;
+    }
     case "n-vote": act(G => {
       const R = G.R;
       if (G.screen !== "vote" || !R.alive.includes(me) || !R.alive.includes(rawId) || rawId === me) return false;
@@ -845,8 +882,8 @@ document.addEventListener("submit", e => {
 });
 
 document.addEventListener("change", e => {
-  if (e.target.id === "whiteToggle") { S.useWhite = e.target.checked; save(); }
-  if (e.target.id === "nWhite") { const v = e.target.checked; const me = N.me; act(G => { if (G.screen !== "lobby" || G.host !== me) return false; G.useWhite = v; }); }
+  if (e.target.id === "whiteToggle") { S.useWhite = e.target.checked; render(); }
+  if (e.target.id === "n-whiteToggle") { const v = e.target.checked; const me = N.me; act(G => { if (G.screen !== "lobby" || G.host !== me) return false; G.useWhite = v; }); }
 });
 
 function start() {
