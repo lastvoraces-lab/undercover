@@ -175,12 +175,8 @@ const O = { ready: false, db: null, user: null, myId: null, game: null, lobby: [
 
 const fresh = () => ({
   mode: "local", screen: "setup",
-  players: [
-    { id: 1, name: "Exemple : Léa", score: 0 },
-    { id: 2, name: "Exemple : Hugo", score: 0 },
-    { id: 3, name: "Exemple : Inès", score: 0 }
-  ],
-  nextId: 4, useWhite: false, roundNo: 0, lastGains: {}, confirmReset: false, R: null, net: null, myName: ""
+  players: [],
+  nextId: 1, useWhite: false, roundNo: 0, lastGains: {}, confirmReset: false, R: null, net: null, myName: ""
 });
 
 function save() { try { localStorage.setItem("undercover-state", JSON.stringify(S)); } catch (e) {} }
@@ -888,6 +884,8 @@ document.addEventListener("change", e => {
 
 function start() {
   S = Object.assign(fresh(), load() || {});
+  // retire les joueurs d'exemple des anciennes versions, s'ils sont encore enregistrés sur ce téléphone
+  if (!S.R) S.players = S.players.filter(p => !/^Exemple : /.test(p.name));
   if (/^#[A-Za-z]{4}$/.test(location.hash)) S.mode = "online";
   if (S.mode !== "online") S.mode = "local";
   if (!["setup", "reveal", "speak", "vote", "eliminated", "end"].includes(S.screen)) S.screen = S.R ? "vote" : "setup";
