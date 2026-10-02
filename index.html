@@ -153,7 +153,7 @@ input[type="text"] { font: inherit; padding: 11px 12px; border-radius: 10px; bor
       <li>Un joueur qui a oublié son mot peut le revoir pendant la partie.</li>
       <li>Après chaque tour de parole, on choisit le joueur à éliminer. Son rôle est révélé.</li>
       <li>En cas d'égalité, personne n'est éliminé : on relance un tour de parole, puis on revote. En ligne, l'égalité est détectée automatiquement.</li>
-      <li>Mr. White éliminé peut deviner le mot des Civils : s'il trouve, il gagne seul. Les accents, les majuscules, le pluriel et une petite faute de frappe sont acceptés.</li>
+      <li>Mr. White éliminé peut deviner le mot des Civils : s'il trouve, il gagne seul. Les accents, les majuscules, le pluriel, le féminin et les petites fautes de frappe sont acceptés.</li>
       <li>Les Civils gagnent quand tous les intrus sont éliminés. Les intrus gagnent quand il ne reste plus qu'un seul Civil.</li>
       <li><b>Points :</b> victoire des Civils = +2 pour chaque Civil (même éliminé). Victoire des intrus = +10 pour chaque Undercover et +12 pour Mr. White, s'ils sont encore en jeu. Mr. White qui devine le mot = +12.</li>
       <li><b>Fin de partie :</b> le premier joueur à atteindre 50 points gagne. Si plusieurs joueurs dépassent 50 dans la même manche, celui qui a le plus de points l'emporte ; en cas d'égalité, ils gagnent ensemble.</li>
@@ -260,11 +260,22 @@ function checkWinner(G) {
 
 function afterElim(G) { const w = checkWinner(G); if (w) finish(G, w); else newSpeakingTurn(G); }
 
-// Mr. White trouve le mot même avec un pluriel ou une petite faute de frappe ("chaussures" pour "Chaussure").
-// On compare sans accents ni majuscules, au singulier, avec 1 faute tolérée (2 pour les mots de 8 lettres et plus).
+// Mr. White trouve le mot même sans accents, au pluriel, au féminin ou avec une petite faute de frappe.
+// Chaque mot est ramené à une forme de base (minuscules, sans accents, singulier, masculin), puis on tolère
+// quelques fautes : aucune sous 5 lettres, 1 jusqu'à 7 lettres, 2 de 8 à 11 lettres, 3 au-delà.
 // Une réponse plus proche du mot de l'Undercover que de celui des Civils reste refusée.
-const singular = w => w.replace(/aux$/, "al").replace(/(?<=..)[sx]$/, "");
-const stem = s => norm(s).length > 3 ? singular(norm(s)) : norm(s);
+function baseForm(token) {
+  let w = token;
+  if (w.length <= 3) return w;
+  w = w.replace(/eaux$/, "eau").replace(/aux$/, "al").replace(/(?<=...)[sx]$/, "");   // pluriel
+  w = w.replace(/euse$/, "eur").replace(/trice$/, "teur")                             // féminin
+       .replace(/ienne$/, "ien").replace(/enne$/, "en").replace(/onne$/, "on")
+       .replace(/elle$/, "el").replace(/ette$/, "et").replace(/ere$/, "er").replace(/ive$/, "if")
+       .replace(/(?<=...)e$/, "");
+  return w;
+}
+const stem = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/œ/g, "oe").replace(/æ/g, "ae")
+  .split(/[^a-z0-9]+/).filter(Boolean).map(baseForm).join("");
 function editDistance(a, b) {
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
   for (let j = 1; j <= b.length; j++) d[0][j] = j;
@@ -274,12 +285,18 @@ function editDistance(a, b) {
   }
   return d[a.length][b.length];
 }
+// Mots du jeu sous leur forme de base : une réponse qui est un AUTRE mot du jeu (« cape » pour « café ») n'est pas une faute de frappe.
+let GAME_STEMS = null;
+const gameStems = () => GAME_STEMS || (GAME_STEMS = new Set(typeof PAIRS !== "undefined" ? PAIRS.flat().map(stem) : []));
 function guessMatches(guess, civilWord, underWord) {
   const g = stem(guess), c = stem(civilWord), u = stem(underWord || "");
   if (!g) return false;
   if (g === c) return true;
+  if (gameStems().has(g)) return false;
+  const len = civilWord.normalize("NFD").replace(/[^A-Za-z0-9]/g, "").length; // nombre de lettres du mot tel qu'écrit
+  const tolerance = len < 5 ? 0 : Math.max(1, Math.floor(len / 4)); // mots très courts : pas de faute tolérée
   const dc = editDistance(g, c), du = u ? editDistance(g, u) : Infinity;
-  return dc <= (c.length >= 8 ? 2 : 1) && dc < du;
+  return dc <= tolerance && dc < du;
 }
 
 function submitGuess(G, g) {
