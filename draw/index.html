@@ -293,29 +293,38 @@ function bindCanvas(canvas, G, who, enabled) {
   paint(canvas, G);
   if (!enabled) return;
   const pos = e => { const r = canvas.getBoundingClientRect(); return [Math.round(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * 1000), Math.round(Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) * 1000)]; };
-  canvas.addEventListener("pointerdown", e => {
-    if (DRAW.pending) return; // un seul trait : il faut d'abord valider ou effacer
-    e.preventDefault(); canvas.setPointerCapture(e.pointerId);
-    DRAW.active = true; DRAW.pts = pos(e); paint(canvas, G);
-  });
-  canvas.addEventListener("pointermove", e => {
+  const begin = pt => {
+    if (DRAW.pending) return false; // un seul trait : il faut d'abord valider ou effacer
+    DRAW.active = true; DRAW.pts = pos(pt); paint(canvas, G); return true;
+  };
+  const move = pt => {
     if (!DRAW.active) return;
-    const [x, y] = pos(e), n = DRAW.pts.length;
+    const [x, y] = pos(pt), n = DRAW.pts.length;
     if (Math.hypot(x - DRAW.pts[n - 2], y - DRAW.pts[n - 1]) < 5 || n > 1200) return;
     DRAW.pts.push(x, y); paint(canvas, G);
-  });
-  // Fin du trait : on libère le doigt et on met à jour uniquement les boutons, sans remplacer la zone de dessin
-  // (la remplacer juste sous le doigt faisait rater le premier appui sur « Valider » sur certains téléphones).
-  const end = e => {
+  };
+  // Fin du trait : on met à jour uniquement les boutons, sans remplacer la zone de dessin.
+  const end = () => {
     if (!DRAW.active) return;
-    try { canvas.releasePointerCapture(e.pointerId); } catch (x) {}
     DRAW.active = false; DRAW.pending = DRAW.pts; DRAW.pts = [];
     paint(canvas, G);
     const box = $("strokeBtns");
     if (box) box.innerHTML = strokeButtonsInner(box.dataset.prefix, !!box.dataset.last);
     if (DRAW.deferRender) { DRAW.deferRender = false; render(); }
   };
-  canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
+  // Écran tactile : événements tactiles classiques. Contrairement à la « capture du pointeur », ils ne
+  // retiennent pas le doigt après le trait : l'appui suivant sur « Valider » arrive bien au bouton.
+  canvas.addEventListener("touchstart", e => { if (e.touches.length === 1 && begin(e.touches[0])) e.preventDefault(); }, { passive: false });
+  canvas.addEventListener("touchmove", e => { if (DRAW.active) { e.preventDefault(); move(e.touches[0]); } }, { passive: false });
+  canvas.addEventListener("touchend", e => { if (DRAW.active) { e.preventDefault(); end(); } }, { passive: false });
+  canvas.addEventListener("touchcancel", end);
+  // Souris (ordinateur) : on suit le mouvement sur toute la page pour ne pas perdre le trait si on sort du cadre.
+  canvas.addEventListener("mousedown", e => {
+    if (e.button !== 0 || !begin(e)) return;
+    e.preventDefault();
+    const mm = ev => move(ev), mu = () => { window.removeEventListener("mousemove", mm); window.removeEventListener("mouseup", mu); end(); };
+    window.addEventListener("mousemove", mm); window.addEventListener("mouseup", mu);
+  });
 }
 const canvasHTML = mine => `<div class="canvasbox${mine ? " mine" : ""}"><canvas id="board" aria-label="Dessin commun"></canvas></div>`;
 const strokeButtons = (prefix, last) => `<div id="strokeBtns" data-prefix="${prefix}" data-last="${last ? 1 : ""}">${strokeButtonsInner(prefix, last)}</div>`;
