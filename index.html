@@ -428,13 +428,12 @@ const LOCAL = {
   },
   vote() {
     const R = S.R;
-    const rows = R.order.map(id => `<li class="${R.pick === id ? "picked" : ""}"><span class="name">${esc(pName(id))}</span><button class="choose" data-act="pick" data-id="${id}" aria-pressed="${R.pick === id}">${R.pick === id ? "Choisi" : "Choisir"}</button></li>`).join("");
+    const rows = R.order.map(id => `<li><span class="name">${esc(pName(id))}</span><button class="choose" data-act="eliminate" data-id="${id}" aria-label="Éliminer ${esc(pName(id))}">Éliminer</button></li>`).join("");
     return `
       <span class="tag">Vote · tour ${R.turnNo}</span>
       <h2>Qui le groupe élimine-t-il ?</h2>
-      <p class="muted">Votez entre vous, puis appuie sur « Choisir » à côté du joueur désigné.</p>
+      <p class="muted">Votez entre vous, puis appuie sur « Éliminer » à côté du joueur désigné.</p>
       <ul class="players">${rows}</ul>
-      <button class="primary" data-act="eliminate" ${R.pick ? "" : "disabled"}>${R.pick ? `Éliminer ${esc(pName(R.pick))}` : "Choisis un joueur"}</button>
       <button data-act="retry">Égalité : relancer un tour</button>
       <button class="ghost" data-act="peekOpen">Un joueur a oublié son mot</button>`;
   },
@@ -501,7 +500,7 @@ function localAction(act, rawId) {
     case "nextSpeaker": advanceSpeaker(S); break;
     case "pick": R.pick = id; break;
     case "retry": newSpeakingTurn(S, TIE_NOTICE); break;
-    case "eliminate": if (R.pick) eliminate(S, R.pick); break;
+    case "eliminate": if (S.screen === "vote" && R.alive.includes(id)) eliminate(S, id); break;
     case "afterElim": afterElim(S); break;
     case "toSetup": S.peek = null; S.screen = "setup"; S.R = null; S.lastGains = {}; break;
     case "resetAsk": S.confirmReset = true; break;
