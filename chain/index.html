@@ -514,13 +514,18 @@ document.addEventListener("click", async e => {
     case "undo": PAD.strokes.pop(); break;
     case "clear": PAD.strokes = []; break;
     case "send-draw": submit(drawingData()); return;
-    case "reveal-next": actS(s => {
-      if (s.host !== me || s.phase !== "reveal") return false;
-      const n = s.order.length;
-      if (s.reveal.upto < n - 1) s.reveal.upto += 1;
-      else if (s.reveal.chain < n - 1) s.reveal = { chain: s.reveal.chain + 1, upto: 0 };
-      else s.phase = "end";
-    }); return;
+    case "reveal-next": {
+      const n = N.s.order.length, finishing = N.s.reveal.chain >= n - 1 && N.s.reveal.upto >= n - 1;
+      const ok = await actS(s => {
+        if (s.host !== me || s.phase !== "reveal") return false;
+        if (s.reveal.upto < n - 1) s.reveal.upto += 1;
+        else if (s.reveal.chain < n - 1) s.reveal = { chain: s.reveal.chain + 1, upto: 0 };
+        else s.phase = "end";
+      });
+      // Révélation terminée : les phrases et dessins ne servent plus, on les efface de la base.
+      if (ok && finishing) { try { await FB.set(R("e"), null); } catch (x) {} }
+      return;
+    }
     case "again": N.busy = true; render();
       try { await FB.set(R("e"), null); } catch (x) {}
       await actS(s => { if (s.host !== me) return false; s.phase = "lobby"; s.order = []; s.step = 0; s.done = {}; delete s.deadline; s.reveal = { chain: 0, upto: 0 }; });
