@@ -211,7 +211,11 @@ function initFirebase() {
   } catch (e) { N.err = "Connexion à Firebase impossible."; return false; }
 }
 const R = path => FB.ref(N.db, `games/${N.code}${path ? "/" + path : ""}`);
-function errText(e) { return /permission/i.test(String(e?.code || e?.message || e)) ? "Firebase refuse l'accès (règles de la base de données)." : "L'action n'a pas pu être enregistrée. Vérifie ta connexion et réessaie."; }
+// Service en ligne indisponible (limite gratuite de Firebase atteinte, réseau coupé…) : un seul message clair.
+const OFFLINE_MSG = "Le jeu en ligne est momentanément indisponible. Réessaie un peu plus tard.";
+const withTimeout = (p, ms = 10000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej({ code: "timeout" }), ms))]);
+const DB = { runTransaction: (...a) => withTimeout(FB.runTransaction(...a)), get: (...a) => withTimeout(FB.get(...a)), set: (...a) => withTimeout(FB.set(...a)) };
+function errText(e) { return OFFLINE_MSG; }
 function normS(v) {
   const s = JSON.parse(JSON.stringify(v || {}));
   s.lobby = s.lobby || {}; s.order = arr(s.order); s.done = s.done || {}; s.step = s.step || 0; s.phase = s.phase || "lobby";
@@ -221,7 +225,7 @@ function normS(v) {
 async function actS(fn) {
   if (!N.db || !N.code) return false;
   try {
-    const res = await FB.runTransaction(R("s"), cur => { if (cur === null) return null; const s = normS(cur); if (fn(s) === false) return undefined; return JSON.parse(JSON.stringify(s)); });
+    const res = await DB.runTransaction(R("s"), cur => { if (cur === null) return null; const s = normS(cur); if (fn(s) === false) return undefined; return JSON.parse(JSON.stringify(s)); });
     return res.committed;
   } catch (e) { N.err = errText(e); render(); return false; }
 }
@@ -243,7 +247,7 @@ async function submit(entry) {
   N.sentKey = key; N.busy = true; render();
   const c = chainFor(s, N.me, k);
   try {
-    await FB.set(R(`e/${c}/${k}`), { by: N.me, ...entry });
+    await DB.set(R(`e/${c}/${k}`), { by: N.me, ...entry });
     await actS(t => { if (t.phase !== "play" || t.step !== k) return false; t.done[N.me] = true; if (t.order.every(id => t.done[id])) advance(t); });
   } catch (e) { N.sentKey = null; N.err = errText(e); }
   N.busy = false; render();
@@ -256,7 +260,7 @@ async function forceAdvance() {
   try {
     for (const id of s.order) if (!s.done[id]) {
       const c = chainFor(s, id, k);
-      await FB.runTransaction(R(`e/${c}/${k}`), cur => cur !== null ? undefined : { by: id, t: stepType(k) === "draw" ? "draw" : "text", x: "", missing: true });
+      await DB.runTransaction(R(`e/${c}/${k}`), cur => cur !== null ? undefined : { by: id, t: stepType(k) === "draw" ? "draw" : "text", x: "", missing: true });
     }
     await actS(t => { if (t.phase !== "play" || t.step !== k) return false; advance(t); });
   } catch (e) {}
@@ -266,8 +270,10 @@ async function loadEntry(c, k) {
   const key = `${N.s.startedAt}-${c}-${k}`;
   if (key in N.cache) return N.cache[key];
   N.cache[key] = null;
-  const snap = await FB.get(R(`e/${c}/${k}`));
-  N.cache[key] = snap.exists() ? snap.val() : { x: "", missing: true };
+  try {
+    const snap = await DB.get(R(`e/${c}/${k}`));
+    N.cache[key] = snap.exists() ? snap.val() : { x: "", missing: true };
+  } catch (e) { delete N.cache[key]; N.err = errText(e); } // on réessaiera au prochain affichage
   return N.cache[key];
 }
 
@@ -437,21 +443,24 @@ setInterval(tick, 500);
 /* ---------- connexion à une partie ---------- */
 function watch(code) {
   N.unsub?.(); N.code = code; N.s = null; saveLocal();
+  clearTimeout(N.loadTimer);
+  N.loadTimer = setTimeout(() => { N.err = OFFLINE_MSG; render(); }, 10000);
   N.unsub = FB.onValue(FB.ref(N.db, `games/${code}/s`), snap => {
+    clearTimeout(N.loadTimer); if (N.err === OFFLINE_MSG) N.err = "";
     if (!snap.exists()) { N.err = `La partie ${code} n'existe plus.`; stopWatching(); render(); return; }
     const prev = N.s; N.s = normS(snap.val());
     if (!prev || prev.step !== N.s.step || prev.phase !== N.s.phase || prev.startedAt !== N.s.startedAt) { PAD.strokes = []; PAD.cur = null; }
     render();
   }, e => { N.err = errText(e); render(); });
 }
-function stopWatching() { N.unsub?.(); N.unsub = null; N.code = null; N.s = null; saveLocal(); }
+function stopWatching() { clearTimeout(N.loadTimer); N.unsub?.(); N.unsub = null; N.code = null; N.s = null; saveLocal(); }
 async function createGame(name) {
   if (!initFirebase()) return render();
   N.busy = true; render();
   try {
     for (let i = 0; i < 6; i++) {
       const code = Array.from({ length: 4 }, () => pick(CODE_CHARS)).join("");
-      const res = await FB.runTransaction(FB.ref(N.db, "games/" + code), cur => cur !== null ? undefined
+      const res = await DB.runTransaction(FB.ref(N.db, "games/" + code), cur => cur !== null ? undefined
         : { type: "chain", code, screen: "chain", host: N.me, createdAt: Date.now(), s: { phase: "lobby", host: N.me, lobby: { [N.me]: { name, joinedAt: Date.now() } } } });
       if (res.committed) { N.busy = false; watch(code); return; }
     }
@@ -463,7 +472,7 @@ async function joinGame(code, name) {
   if (!initFirebase()) return render();
   N.busy = true; N.err = ""; render();
   try {
-    const t = await FB.get(FB.ref(N.db, `games/${code}/type`));
+    const t = await DB.get(FB.ref(N.db, `games/${code}/type`));
     if (!t.exists()) N.err = `Aucune partie avec le code ${code}.`;
     else if (t.val() !== "chain") N.err = `Le code ${code} correspond à une partie d'un autre jeu.`;
     else {
@@ -500,7 +509,7 @@ document.addEventListener("click", async e => {
     case "leave-yes": N.confirmLeave = false; if (N.s?.phase === "lobby" && N.s.host !== me) await actS(s => { if (s.phase !== "lobby") return false; delete s.lobby[me]; }); stopWatching(); break;
     case "invite": invite(); return;
     case "start": N.busy = true; render();
-      try { await FB.set(R("e"), null); } catch (x) {}
+      try { await DB.set(R("e"), null); } catch (x) {}
       await actS(s => {
         if (s.host !== me || s.phase !== "lobby") return false;
         const list = lobbyList(s); if (list.length < MIN_PLAYERS) return false;
@@ -523,11 +532,11 @@ document.addEventListener("click", async e => {
         else s.phase = "end";
       });
       // Révélation terminée : les phrases et dessins ne servent plus, on les efface de la base.
-      if (ok && finishing) { try { await FB.set(R("e"), null); } catch (x) {} }
+      if (ok && finishing) { try { await DB.set(R("e"), null); } catch (x) {} }
       return;
     }
     case "again": N.busy = true; render();
-      try { await FB.set(R("e"), null); } catch (x) {}
+      try { await DB.set(R("e"), null); } catch (x) {}
       await actS(s => { if (s.host !== me) return false; s.phase = "lobby"; s.order = []; s.step = 0; s.done = {}; delete s.deadline; s.reveal = { chain: 0, upto: 0 }; });
       N.cache = {}; N.busy = false; break;
   }

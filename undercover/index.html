@@ -604,7 +604,7 @@ async function act(fn) {
   N.busy = true; N.err = ""; render();
   let ok = false;
   try {
-    const res = await FB.runTransaction(gameRef(N.code), cur => {
+    const res = await DB.runTransaction(gameRef(N.code), cur => {
       if (cur === null) return null; // cache local vide : Firebase relancera avec la vraie valeur
       const G = normGame(cur);
       if (fn(G) === false) return undefined;
@@ -615,17 +615,20 @@ async function act(fn) {
   N.busy = false; render();
   return ok;
 }
-function errText(e) {
-  const m = String(e?.code || e?.message || e);
-  if (/permission/i.test(m)) return "Firebase refuse l'accès. Les règles de la base de données ne sont sans doute pas encore installées.";
-  return "L'action n'a pas pu être enregistrée. Vérifie ta connexion et réessaie.";
-}
+// Service en ligne indisponible (limite gratuite de Firebase atteinte, réseau coupé…) : un seul message clair.
+const OFFLINE_MSG = "Le jeu en ligne est momentanément indisponible. Réessaie un peu plus tard.";
+const withTimeout = (p, ms = 10000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej({ code: "timeout" }), ms))]);
+const DB = { runTransaction: (...a) => withTimeout(FB.runTransaction(...a)), get: (...a) => withTimeout(FB.get(...a)), set: (...a) => withTimeout(FB.set(...a)) };
+function errText(e) { return OFFLINE_MSG; }
 
 function watch(code) {
   N.unsub?.();
   N.code = code; N.game = null;
   S.net = { code }; save();
+  clearTimeout(N.loadTimer);
+  N.loadTimer = setTimeout(() => { N.err = OFFLINE_MSG; render(); }, 10000);
   N.unsub = FB.onValue(gameRef(code), snap => {
+    clearTimeout(N.loadTimer); if (N.err === OFFLINE_MSG) N.err = "";
     if (!snap.exists()) { N.game = null; N.err = `La partie ${code} n'existe plus.`; stopWatching(); render(); return; }
     N.game = normGame(snap.val());
     // nouvelle manche : chaque téléphone recache son mot, il faut appuyer sur « Afficher mon mot »
@@ -635,7 +638,7 @@ function watch(code) {
     render();
   }, e => { N.err = errText(e); render(); });
 }
-function stopWatching() { N.unsub?.(); N.unsub = null; N.code = null; N.game = null; S.net = null; save(); }
+function stopWatching() { clearTimeout(N.loadTimer); N.unsub?.(); N.unsub = null; N.code = null; N.game = null; S.net = null; save(); }
 
 async function createGame(name) {
   if (!initFirebase()) return render();
@@ -643,7 +646,7 @@ async function createGame(name) {
   try {
     for (let i = 0; i < 6; i++) {
       const code = newCode();
-      const res = await FB.runTransaction(gameRef(code), cur => {
+      const res = await DB.runTransaction(gameRef(code), cur => {
         if (cur !== null) return undefined; // code déjà pris
         return { code, createdAt: Date.now(), host: N.me, screen: "lobby", lobby: { [N.me]: { name, joinedAt: Date.now() } }, useWhite: false, roundNo: 0 };
       });
@@ -659,11 +662,11 @@ async function joinGame(code, name) {
   N.me = myPid(); N.busy = true; N.err = ""; render();
   let full = false, missing = false;
   try {
-    const snap = await FB.get(gameRef(code));
+    const snap = await DB.get(gameRef(code));
     if (!snap.exists()) missing = true;
     else if (snap.val().type && snap.val().type !== "undercover") { N.err = `Le code ${code} correspond à une partie d'un autre jeu.`; N.busy = false; return render(); }
     else {
-      const res = await FB.runTransaction(gameRef(code), cur => {
+      const res = await DB.runTransaction(gameRef(code), cur => {
         if (cur === null) return null;
         const G = normGame(cur);
         if (!G.lobby[N.me] && Object.keys(G.lobby).length >= MAX_PLAYERS) { full = true; return undefined; }
@@ -710,7 +713,7 @@ function renderNet() {
   const leave = !N.code ? "" : N.confirmLeave
     ? `<div class="leavebox" role="alertdialog" aria-label="Confirmer"><p class="warn">Quitter la partie ${esc(N.code)} ?</p><div class="row"><button class="primary" data-act="n-leave-yes">Oui, quitter</button><button data-act="n-leave-no">Non, rester</button></div></div>`
     : `<button class="leavebtn" data-act="n-leave">Quitter la partie</button>`;
-  $("screen").innerHTML = `<section class="card">${offline}${netView(G)}${N.err ? `<p class="err" role="alert">${esc(N.err)}</p>` : ""}</section>${leave}`;
+  $("screen").innerHTML = `<section class="card">${offline}${netView(G)}${N.err ? `<p class="err" role="alert">${esc(N.err)}</p>` : ""}${N.err === OFFLINE_MSG ? `<button data-act="mode" data-mode="local">Jouer sur un seul téléphone en attendant</button>` : ""}</section>${leave}`;
 }
 
 function netWordBox(G) {
