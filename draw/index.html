@@ -125,6 +125,7 @@ input[type="text"] { font: inherit; padding: 11px 12px; border-radius: 10px; bor
 .confirm { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 @media (prefers-reduced-motion: no-preference) { .card { animation: in .25s ease-out; } @keyframes in { from { transform: translateY(6px); opacity: .6; } to { transform: none; opacity: 1; } } }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }
+button, a, label, input { touch-action: manipulation; }
 .canvasbox { position: relative; width: 100%; max-width: 100%; aspect-ratio: 1; border-radius: 14px; border: 2px solid var(--line); background: #fffdf8; overflow: hidden; touch-action: none; }
 .canvasbox.mine { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent); }
 .canvasbox canvas { width: 100%; height: 100%; display: block; touch-action: none; }
@@ -303,15 +304,22 @@ function bindCanvas(canvas, G, who, enabled) {
     if (Math.hypot(x - DRAW.pts[n - 2], y - DRAW.pts[n - 1]) < 5 || n > 1200) return;
     DRAW.pts.push(x, y); paint(canvas, G);
   });
-  const end = () => {
+  // Fin du trait : on libère le doigt et on met à jour uniquement les boutons, sans remplacer la zone de dessin
+  // (la remplacer juste sous le doigt faisait rater le premier appui sur « Valider » sur certains téléphones).
+  const end = e => {
     if (!DRAW.active) return;
+    try { canvas.releasePointerCapture(e.pointerId); } catch (x) {}
     DRAW.active = false; DRAW.pending = DRAW.pts; DRAW.pts = [];
-    render(); if (DRAW.deferRender) { DRAW.deferRender = false; }
+    paint(canvas, G);
+    const box = $("strokeBtns");
+    if (box) box.innerHTML = strokeButtonsInner(box.dataset.prefix, !!box.dataset.last);
+    if (DRAW.deferRender) { DRAW.deferRender = false; render(); }
   };
   canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
 }
 const canvasHTML = mine => `<div class="canvasbox${mine ? " mine" : ""}"><canvas id="board" aria-label="Dessin commun"></canvas></div>`;
-const strokeButtons = (prefix, last) => DRAW.pending
+const strokeButtons = (prefix, last) => `<div id="strokeBtns" data-prefix="${prefix}" data-last="${last ? 1 : ""}">${strokeButtonsInner(prefix, last)}</div>`;
+const strokeButtonsInner = (prefix, last) => DRAW.pending
   ? `<div class="row"><button class="primary" data-act="${prefix}stroke-ok">${last ? "Valider mon trait (dernier)" : "Valider mon trait"}</button><button data-act="stroke-undo">Effacer mon trait</button></div>`
   : `<p class="muted center">Dessine <b>un seul trait</b> sans lever le doigt.</p>`;
 function legendHTML(G) {

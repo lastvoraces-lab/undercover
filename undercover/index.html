@@ -98,6 +98,7 @@ input[type="text"] { font: inherit; padding: 11px 12px; border-radius: 10px; bor
 .stepper .count { font-family: var(--display); font-size: 20px; min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
 .backlink { align-self: flex-start; color: var(--muted); text-decoration: none; font-weight: 700; font-size: 13px; padding: 6px 0; }
 .backlink:hover, .backlink:focus-visible { color: var(--accent); }
+button, a, label, input { touch-action: manipulation; }
 .err { color: var(--under); font-weight: 700; }
 .sep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
 .sep::before, .sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
