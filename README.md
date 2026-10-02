@@ -1,14 +1,19 @@
-# Undercover
+# Jeux entre amis
 
-Jeu d'ambiance Undercover, de 3 à 5 joueurs, en français.
+Collection de jeux d'ambiance en français. La page d'accueil (`index.html`) présente les jeux ; chaque jeu vit dans son propre dossier.
+
+## Undercover (`undercover/`)
+
+Jeu d'ambiance Undercover, de 3 à 10 joueurs.
 
 - **Un seul téléphone** : on se passe l'appareil.
-- **En ligne** : chacun joue sur son téléphone. La partie est stockée dans une base Firebase Realtime Database : on peut rejoindre même si le téléphone de celui qui a créé la partie est en veille, et n'importe quel joueur peut faire avancer la partie.
+- **En ligne** : chacun joue sur son téléphone. La partie est stockée dans une base Firebase Realtime Database : on peut rejoindre même si le téléphone de celui qui a créé la partie est en veille, et le créateur de la partie lance les manches.
 
 ## Fichiers
 
-- `index.html` : tout le jeu (page, styles et code).
-- `firebase-db.js` : SDK Firebase 12.19.0 (app + Realtime Database) regroupé en un seul fichier. Licence Apache-2.0, © Google LLC.
+- `index.html` : page d'accueil de la collection.
+- `undercover/index.html` : le jeu Undercover ; `undercover/pairs.js` : paires de mots ; `undercover/definitions.js` : définitions.
+- `shared/firebase-db.js` : SDK Firebase 12.19.0 (app + Realtime Database) regroupé en un seul fichier. Licence Apache-2.0, © Google LLC.
 - `database.rules.json` : règles d'accès à copier dans la console Firebase (Realtime Database → Rules).
 
 ## Mise en ligne
