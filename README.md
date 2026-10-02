@@ -24,3 +24,10 @@ GitHub Pages : Settings → Pages → Source *Deploy from a branch* → `main`, 
 
 - Les mots de toute la manche sont stockés dans la base : un joueur qui fouille les outils de développement de son navigateur pourrait les voir. Le jeu compte sur la confiance entre amis.
 - Toute personne qui connaît le code d'une partie peut y agir.
+
+## Trait suspect (`draw/`)
+
+Dessin commun, un trait par joueur et par tour (deux tours). Tout le monde connaît le sujet sauf l'imposteur, qui ne connaît que la catégorie. Vote pour le démasquer ; s'il est démasqué, il peut encore deviner le sujet.
+
+- `draw/index.html` : le jeu ; `draw/words.js` : sujets à dessiner par catégorie.
+- Les parties en ligne utilisent la même base Firebase (`games/<CODE>`, avec `type: "draw"`).

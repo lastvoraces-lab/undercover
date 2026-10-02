@@ -660,6 +660,7 @@ async function joinGame(code, name) {
   try {
     const snap = await FB.get(gameRef(code));
     if (!snap.exists()) missing = true;
+    else if (snap.val().type && snap.val().type !== "undercover") { N.err = `Le code ${code} correspond à une partie d'un autre jeu.`; N.busy = false; return render(); }
     else {
       const res = await FB.runTransaction(gameRef(code), cur => {
         if (cur === null) return null;
