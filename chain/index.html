@@ -326,8 +326,16 @@ const drawingData = () => ({ t: "draw", d: PAD.strokes.map(s => ({ c: s.c, w: s.
 
 /* ---------- rendu ---------- */
 let renderTimer = null;
+const screenSig = () => JSON.stringify([N.code, N.s?.phase, N.s?.step, N.s?.startedAt, N.s?.reveal, N.sentKey, N.err, N.busy, N.confirmLeave, !!N.s?.lobby?.[N.me]]);
 function render() {
   if (PAD.cur) { clearTimeout(renderTimer); renderTimer = setTimeout(render, 150); return; } // ne pas casser un trait en cours
+  // Quelqu'un est en train d'écrire : si l'écran n'a pas changé de fond, on garde le champ (et le clavier) en place.
+  const ae = document.activeElement;
+  if (ae && ae.tagName === "INPUT" && $("screen").contains(ae) && screenSig() === N.lastSig) {
+    const prog = document.querySelector("#screen .progress"), s = N.s;
+    if (prog && s?.order) prog.innerHTML = s.order.map(id => `<span class="${s.done[id] ? "ok" : ""}">${esc(nameOf(id))}</span>`).join("");
+    tick(); return;
+  }
   const kept = {}; document.querySelectorAll("#screen input[type=text]").forEach(i => kept[i.id] = i.value);
   const active = document.activeElement?.id;
   const s = N.code ? N.s : null;
@@ -339,6 +347,7 @@ function render() {
   $("screen").innerHTML = `<section class="card">${offline}${view(s)}${N.err ? `<p class="err" role="alert">${esc(N.err)}</p>` : ""}</section>${leave}`;
   Object.entries(kept).forEach(([id, v]) => { const i = $(id); if (i && !i.value) i.value = v; });
   if (active && $(active)?.tagName === "INPUT") $(active).focus();
+  N.lastSig = screenSig();
   if ($("pad")) bindPad($("pad"));
   document.querySelectorAll("canvas[data-c]").forEach(c => { const e = N.cache[c.dataset.key]; if (e?.d) paintDrawing(c, arr(e.d), false); });
   tick();
@@ -556,7 +565,12 @@ document.addEventListener("submit", e => {
     submit({ t: "text", x: x.slice(0, 80) });
   }
 });
-window.addEventListener("resize", () => render());
+// Sur Android, l'ouverture du clavier redimensionne la page : on ne reconstruit surtout pas l'écran
+// (sinon le champ touché est remplacé et le clavier se referme). On repeint seulement les dessins.
+window.addEventListener("resize", () => {
+  if ($("pad")) paintDrawing($("pad"), PAD.strokes, true);
+  document.querySelectorAll("canvas[data-c]").forEach(c => { const e = N.cache[c.dataset.key]; if (e?.d) paintDrawing(c, arr(e.d), false); });
+});
 
 (function start() {
   N.me = myPid();
